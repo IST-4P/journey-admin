@@ -1,17 +1,17 @@
-import { Edit, Eye, Search, Trash, UserPlus } from 'lucide-react';
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Pagination } from '../../components/common/Pagination';
-import { Badge } from '../../components/ui/badge';
-import { Button } from '../../components/ui/button';
-import { Input } from '../../components/ui/input';
+import { Edit, Eye, Search, Trash, UserPlus } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Pagination } from "../../components/common/Pagination";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '../../components/ui/select';
+} from "../../components/ui/select";
 import {
   Table,
   TableBody,
@@ -19,55 +19,76 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '../../components/ui/table';
-import { mockUsers } from '../../lib/mockData';
+} from "../../components/ui/table";
+import { userService } from "../../lib/services/user.service";
+import type { Profile, Role } from "../../lib/types/user.types";
 
 const ITEMS_PER_PAGE = 15;
 
 export function UsersListPage() {
   const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState(1);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState<Role | "all">("all");
+  const [users, setUsers] = useState<Profile[]>([]);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Filter users
-  const filteredUsers = mockUsers.filter((user) => {
-    const matchesSearch =
-      user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  // Fetch users from API
+  useEffect(() => {
+    fetchUsers();
+  }, [currentPage, searchQuery, roleFilter]);
 
-  // Pagination
-  const totalPages = Math.ceil(filteredUsers.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedUsers = filteredUsers.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  const fetchUsers = async () => {
+    setIsLoading(true);
+    try {
+      const response = await userService.getAllProfiles({
+        page: currentPage,
+        limit: ITEMS_PER_PAGE,
+        fullName: searchQuery || undefined,
+        role: roleFilter === "all" ? undefined : roleFilter,
+      });
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'bg-green-100 text-green-800';
-      case 'inactive':
-        return 'bg-gray-100 text-gray-800';
-      case 'suspended':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+      setUsers(response.profiles);
+      setTotalPages(response.totalPages);
+      setTotalItems(response.totalItems);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      // Toast error đã được xử lý bởi axios interceptor
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'Hoạt động';
-      case 'inactive':
-        return 'Không hoạt động';
-      case 'suspended':
-        return 'Bị khóa';
+  const getRoleColor = (role: Role) => {
+    switch (role) {
+      case "ADMIN":
+        return "bg-blue-100 text-blue-800";
+      case "SUPER_ADMIN":
+        return "bg-purple-100 text-purple-800";
+      case "USER":
+        return "bg-green-100 text-green-800";
       default:
-        return status;
+        return "bg-gray-100 text-gray-800";
     }
+  };
+
+  const getRoleLabel = (role: Role) => {
+    switch (role) {
+      case "ADMIN":
+        return "Quản trị viên";
+      case "SUPER_ADMIN":
+        return "Super Admin";
+      case "USER":
+        return "Người dùng";
+      default:
+        return role;
+    }
+  };
+
+  const formatDate = (date: Date | string) => {
+    return new Date(date).toLocaleDateString("vi-VN");
   };
 
   return (
@@ -75,7 +96,7 @@ export function UsersListPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl">Quản Lý Người Dùng</h2>
         <Button
-          onClick={() => navigate('/users/new')}
+          onClick={() => navigate("/users/new")}
           className="bg-[#007BFF] hover:bg-[#0056b3]"
         >
           <UserPlus className="h-4 w-4 mr-2" />
@@ -94,73 +115,85 @@ export function UsersListPage() {
             className="pl-10"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select
+          value={roleFilter}
+          onValueChange={(value: string) =>
+            setRoleFilter(value as Role | "all")
+          }
+        >
           <SelectTrigger className="w-full sm:w-[200px]">
-            <SelectValue placeholder="Lọc theo trạng thái" />
+            <SelectValue placeholder="Lọc theo vai trò" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Tất cả trạng thái</SelectItem>
-            <SelectItem value="active">Hoạt động</SelectItem>
-            <SelectItem value="inactive">Không hoạt động</SelectItem>
-            <SelectItem value="suspended">Bị khóa</SelectItem>
+            <SelectItem value="all">Tất cả vai trò</SelectItem>
+            <SelectItem value="USER">Người dùng</SelectItem>
+            <SelectItem value="ADMIN">Quản trị viên</SelectItem>
+            <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
       {/* Table */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>ID</TableHead>
-              <TableHead>Họ Tên</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Số Điện Thoại</TableHead>
-              <TableHead>Trạng Thái</TableHead>
-              <TableHead>Điểm Tín Nhiệm</TableHead>
-              <TableHead>Ngày Đăng Ký</TableHead>
-              <TableHead className="text-right">Hành Động</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {paginatedUsers.map((user, index) => (
-              <TableRow key={user.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                <TableCell>{user.id}</TableCell>
-                <TableCell>{user.name}</TableCell>
-                <TableCell>{user.email}</TableCell>
-                <TableCell>{user.phone}</TableCell>
-                <TableCell>
-                  <Badge className={getStatusColor(user.status)}>
-                    {getStatusLabel(user.status)}
-                  </Badge>
-                </TableCell>
-                <TableCell>{user.trustScore}</TableCell>
-                <TableCell>{user.registrationDate}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex items-center justify-end space-x-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => navigate(`/users/${user.id}`)}
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => navigate(`/users/${user.id}/edit`)}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="sm">
-                      <Trash className="h-4 w-4 text-red-600" />
-                    </Button>
-                  </div>
-                </TableCell>
+        {isLoading ? (
+          <div className="p-8 text-center text-gray-500">Đang tải...</div>
+        ) : users.length === 0 ? (
+          <div className="p-8 text-center text-gray-500">Không có dữ liệu</div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Email</TableHead>
+                <TableHead>Họ Tên</TableHead>
+                <TableHead>Số Điện Thoại</TableHead>
+                <TableHead>Vai Trò</TableHead>
+                <TableHead>Điểm Tín Nhiệm</TableHead>
+                <TableHead>Ngày Đăng Ký</TableHead>
+                <TableHead className="text-right">Hành Động</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {users.map((user, index) => (
+                <TableRow
+                  key={user.id}
+                  className={index % 2 === 0 ? "bg-gray-50" : ""}
+                >
+                  <TableCell>{user.email}</TableCell>
+                  <TableCell>{user.fullName}</TableCell>
+                  <TableCell>{user.phone}</TableCell>
+                  <TableCell>
+                    <Badge className={getRoleColor(user.role)}>
+                      {getRoleLabel(user.role)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{user.creditScore}</TableCell>
+                  <TableCell>{formatDate(user.createdAt)}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end space-x-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => navigate(`/users/${user.id}`)}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => navigate(`/users/${user.id}/edit`)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm">
+                        <Trash className="h-4 w-4 text-red-600" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </div>
 
       {/* Pagination */}

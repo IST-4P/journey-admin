@@ -1,32 +1,32 @@
-import { Eye, EyeOff } from 'lucide-react';
-import { useState } from 'react';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { apiService } from '../lib/api';
+import { Eye, EyeOff } from "lucide-react";
+import { useState } from "react";
+import toast from "react-hot-toast";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { authService } from "../lib/services/auth.service";
 
 interface LoginPageProps {
   onLogin: () => void;
 }
 
 export function LoginPage({ onLogin }: LoginPageProps) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setIsLoading(true);
 
+    setIsLoading(true);
     try {
-      await apiService.login({ email, password });
+      await authService.login({ email, password });
+      toast.success("Đăng nhập thành công!");
       onLogin();
-    } catch (err: any) {
-      setError(err.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.');
-      console.error('Login error:', err);
+    } catch (error) {
+      // Lỗi đã được xử lý bởi axios interceptor
+      console.error("Login error:", error);
     } finally {
       setIsLoading(false);
     }
@@ -44,12 +44,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm whitespace-pre-line">
-                {error}
-              </div>
-            )}
-
             <div>
               <Label htmlFor="email">Email</Label>
               <Input
@@ -68,7 +62,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               <div className="relative mt-1">
                 <Input
                   id="password"
-                  type={showPassword ? 'text' : 'password'}
+                  type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -80,13 +74,21 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
                 >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
                 </button>
               </div>
             </div>
 
-            <Button type="submit" className="w-full bg-[#007BFF] hover:bg-[#0056b3]" disabled={isLoading}>
-              {isLoading ? 'Đang đăng nhập...' : 'Đăng Nhập'}
+            <Button
+              type="submit"
+              className="w-full bg-[#007BFF] hover:bg-[#0056b3]"
+              disabled={isLoading}
+            >
+              {isLoading ? "Đang đăng nhập..." : "Đăng Nhập"}
             </Button>
 
             <div className="text-center">

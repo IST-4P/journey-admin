@@ -1,7 +1,7 @@
 
-  # Admin Dashboard Design
+  # Website Design for HacMieu Journey
 
-  This is a code bundle for Admin Dashboard Design. The original project is available at https://www.figma.com/design/712iDq81i1dSdyOETUwV03/Admin-Dashboard-Design.
+  This is a code bundle for Website Design for HacMieu Journey. The original project is available at https://www.figma.com/design/VKBXp3fRIKtvP7CpAoaIPu/Website-Design-for-HacMieu-Journey.
 
   ## Running the code
 

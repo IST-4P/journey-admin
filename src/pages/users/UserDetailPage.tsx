@@ -1,79 +1,133 @@
-import { ArrowLeft, Check, Save, Upload, X } from 'lucide-react';
-import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Badge } from '../../components/ui/badge';
-import { Button } from '../../components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
-import { Checkbox } from '../../components/ui/checkbox';
-import { Input } from '../../components/ui/input';
-import { Label } from '../../components/ui/label';
-import { Slider } from '../../components/ui/slider';
-import { Textarea } from '../../components/ui/textarea';
-import { mockUsers } from '../../lib/mockData';
+import { ArrowLeft, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
+import { useNavigate, useParams } from "react-router-dom";
+import { Button } from "../../components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../../components/ui/card";
+import { Checkbox } from "../../components/ui/checkbox";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import { Slider } from "../../components/ui/slider";
+import { Textarea } from "../../components/ui/textarea";
+import { userService } from "../../lib/services/user.service";
+import type {
+  BankAccount,
+  DriverLicense,
+  Profile,
+} from "../../lib/types/user.types";
 
 export function UserDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const isNew = id === 'new';
-  const isEdit = window.location.pathname.includes('/edit');
+  const isNew = id === "new";
 
-  const userData = isNew ? null : mockUsers.find((u) => u.id === Number(id));
+  const [isLoading, setIsLoading] = useState(false);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [driverLicense, setDriverLicense] = useState<DriverLicense | null>(
+    null
+  );
+  const [bankAccount, setBankAccount] = useState<BankAccount | null>(null);
 
   const [formData, setFormData] = useState({
-    name: userData?.name || '',
-    email: userData?.email || '',
-    phone: userData?.phone || '',
-    trustScore: userData?.trustScore || 50,
-    licenseVerified: userData?.licenseVerified || false,
-    addresses: userData?.addresses || [''],
-    bankAccount: userData?.bankAccount || '',
-    status: userData?.status || 'active',
+    licenseVerified: false,
+    rejectedReason: "",
   });
 
-  const handleSave = () => {
-    // In a real app, save to backend
-    navigate('/users');
+  useEffect(() => {
+    if (!isNew && id) {
+      fetchUserData();
+    }
+  }, [id, isNew]);
+
+  const fetchUserData = async () => {
+    if (!id) return;
+
+    setIsLoading(true);
+    try {
+      const [profileData, licenseData, bankData] = await Promise.allSettled([
+        userService.getProfile(id),
+        userService.getDriverLicense(id).catch(() => null),
+        userService.getBankAccount(id).catch(() => null),
+      ]);
+
+      if (profileData.status === "fulfilled") {
+        setProfile(profileData.value);
+      }
+
+      if (licenseData.status === "fulfilled" && licenseData.value) {
+        setDriverLicense(licenseData.value);
+        setFormData({
+          licenseVerified: licenseData.value.isVerified,
+          rejectedReason: licenseData.value.rejectedReason || "",
+        });
+      }
+
+      if (bankData.status === "fulfilled" && bankData.value) {
+        setBankAccount(bankData.value);
+      }
+    } catch (error) {
+      console.error("Error fetching user data:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const addAddress = () => {
-    setFormData({
-      ...formData,
-      addresses: [...formData.addresses, ''],
-    });
+  const handleVerifyLicense = async (isVerified: boolean) => {
+    if (!id) return;
+
+    try {
+      await userService.verifyDriverLicense({
+        userId: id,
+        isVerified,
+        rejectedReason: isVerified ? undefined : formData.rejectedReason,
+      });
+
+      toast.success(isVerified ? "Đã xác thực GPLX" : "Đã từ chối GPLX");
+      fetchUserData();
+    } catch (error) {
+      console.error("Error verifying license:", error);
+    }
   };
 
-  const updateAddress = (index: number, value: string) => {
-    const newAddresses = [...formData.addresses];
-    newAddresses[index] = value;
-    setFormData({ ...formData, addresses: newAddresses });
-  };
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-gray-500">Đang tải...</p>
+        </div>
+      </div>
+    );
+  }
 
-  const removeAddress = (index: number) => {
-    const newAddresses = formData.addresses.filter((_, i) => i !== index);
-    setFormData({ ...formData, addresses: newAddresses });
-  };
-
-  const viewMode = !isNew && !isEdit;
+  if (!profile && !isNew) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-gray-500">Không tìm thấy người dùng</p>
+          <Button onClick={() => navigate("/users")} className="mt-4">
+            Quay lại
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <Button variant="ghost" onClick={() => navigate('/users')}>
+          <Button variant="ghost" onClick={() => navigate("/users")}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <h2 className="text-2xl">
-            {isNew ? 'Tạo Người Dùng Mới' : isEdit ? 'Chỉnh Sửa Người Dùng' : 'Chi Tiết Người Dùng'}
+            {isNew ? "Tạo Người Dùng Mới" : "Chi Tiết Người Dùng"}
           </h2>
         </div>
-        {viewMode && (
-          <Button
-            onClick={() => navigate(`/users/${id}/edit`)}
-            className="bg-[#007BFF] hover:bg-[#0056b3]"
-          >
-            Chỉnh Sửa
-          </Button>
-        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -85,251 +139,265 @@ export function UserDetailPage() {
           <CardContent className="space-y-4">
             <div>
               <Label htmlFor="avatar">Avatar</Label>
-              {viewMode ? (
-                <div className="mt-2 h-20 w-20 rounded-full bg-gray-200 flex items-center justify-center">
-                  <span className="text-2xl text-gray-600">
-                    {formData.name.charAt(0).toUpperCase()}
-                  </span>
-                </div>
-              ) : (
-                <div className="mt-2 flex items-center space-x-4">
+              <div className="mt-2 flex items-center space-x-4">
+                {profile?.avatarUrl ? (
+                  <img
+                    src={profile.avatarUrl}
+                    alt={profile.fullName}
+                    className="h-20 w-20 rounded-full object-cover"
+                  />
+                ) : (
                   <div className="h-20 w-20 rounded-full bg-gray-200 flex items-center justify-center">
                     <span className="text-2xl text-gray-600">
-                      {formData.name.charAt(0).toUpperCase() || '?'}
+                      {profile?.fullName.charAt(0).toUpperCase() || "?"}
                     </span>
                   </div>
-                  <Button variant="outline" size="sm">
-                    <Upload className="h-4 w-4 mr-2" />
-                    Tải Lên
-                  </Button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="name">Họ Tên *</Label>
+                <Label htmlFor="name">Họ Tên</Label>
                 <Input
                   id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  value={profile?.fullName || ""}
                   disabled
-                  required
                   className="mt-1 bg-gray-50"
                 />
-                <p className="text-xs text-gray-500 mt-1">Không thể chỉnh sửa thông tin cá nhân</p>
               </div>
               <div>
-                <Label htmlFor="email">Email *</Label>
+                <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
                   type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  value={profile?.email || ""}
                   disabled
-                  required
                   className="mt-1 bg-gray-50"
                 />
-                <p className="text-xs text-gray-500 mt-1">Không thể chỉnh sửa thông tin cá nhân</p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="phone">Số Điện Thoại *</Label>
+                <Label htmlFor="phone">Số Điện Thoại</Label>
                 <Input
                   id="phone"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  value={profile?.phone || ""}
                   disabled
-                  required
                   className="mt-1 bg-gray-50"
                 />
-                <p className="text-xs text-gray-500 mt-1">Không thể chỉnh sửa thông tin cá nhân</p>
               </div>
               <div>
-                <Label htmlFor="bankAccount">Tài Khoản Ngân Hàng</Label>
+                <Label htmlFor="role">Vai Trò</Label>
                 <Input
-                  id="bankAccount"
-                  value={formData.bankAccount}
-                  onChange={(e) => setFormData({ ...formData, bankAccount: e.target.value })}
+                  id="role"
+                  value={profile?.role || ""}
                   disabled
                   className="mt-1 bg-gray-50"
                 />
-                <p className="text-xs text-gray-500 mt-1">Không thể chỉnh sửa thông tin cá nhân</p>
               </div>
             </div>
 
-            <div>
-              <Label>Giấy Phép Lái Xe</Label>
-              <div className="mt-2 space-y-3">
-                {userData?.licenseImages && userData.licenseImages.length > 0 ? (
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {userData.licenseImages.map((img, idx) => (
-                      <img
-                        key={idx}
-                        src={img}
-                        alt={`GPLX ${idx + 1}`}
-                        className="w-full h-32 object-cover rounded-lg border border-gray-200"
-                        onError={(e) => {
-                          e.currentTarget.src = 'https://via.placeholder.com/300x200?text=GPLX';
-                        }}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-500">Chưa có hình ảnh GPLX</p>
-                )}
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="licenseVerified"
-                    checked={formData.licenseVerified}
-                    onCheckedChange={(checked) =>
-                      setFormData({ ...formData, licenseVerified: checked as boolean })
-                    }
-                    disabled={viewMode}
-                  />
-                  <label htmlFor="licenseVerified" className="text-sm">
-                    Đã Xác Thực
-                  </label>
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="gender">Giới Tính</Label>
+                <Input
+                  id="gender"
+                  value={profile?.gender || ""}
+                  disabled
+                  className="mt-1 bg-gray-50"
+                />
+              </div>
+              <div>
+                <Label htmlFor="birthDate">Ngày Sinh</Label>
+                <Input
+                  id="birthDate"
+                  value={
+                    profile?.birthDate
+                      ? new Date(profile.birthDate).toLocaleDateString("vi-VN")
+                      : ""
+                  }
+                  disabled
+                  className="mt-1 bg-gray-50"
+                />
               </div>
             </div>
 
+            {profile?.bio && (
+              <div>
+                <Label htmlFor="bio">Tiểu Sử</Label>
+                <Textarea
+                  id="bio"
+                  value={profile.bio}
+                  disabled
+                  className="mt-1 bg-gray-50"
+                  rows={3}
+                />
+              </div>
+            )}
+
             <div>
-              <Label>Điểm Tín Nhiệm: {formData.trustScore}</Label>
+              <Label>Điểm Tín Nhiệm: {profile?.creditScore || 0}</Label>
               <Slider
-                value={[formData.trustScore]}
-                onValueChange={([value]) => setFormData({ ...formData, trustScore: value })}
+                value={[profile?.creditScore || 0]}
                 max={100}
                 step={1}
-                disabled={viewMode}
+                disabled
                 className="mt-2"
               />
             </div>
           </CardContent>
         </Card>
 
-        {/* Status */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Trạng Thái</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {viewMode ? (
-              <Badge
-                className={
-                  formData.status === 'active'
-                    ? 'bg-green-100 text-green-800'
-                    : formData.status === 'suspended'
-                    ? 'bg-red-100 text-red-800'
-                    : 'bg-gray-100 text-gray-800'
-                }
-              >
-                {formData.status === 'active'
-                  ? 'Hoạt động'
-                  : formData.status === 'suspended'
-                  ? 'Bị khóa'
-                  : 'Không hoạt động'}
-              </Badge>
-            ) : (
-              <div className="space-y-2">
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="status"
-                    value="active"
-                    checked={formData.status === 'active'}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                    className="text-[#007BFF]"
-                  />
-                  <span>Hoạt động</span>
-                </label>
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="status"
-                    value="inactive"
-                    checked={formData.status === 'inactive'}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                  />
-                  <span>Không hoạt động</span>
-                </label>
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="status"
-                    value="suspended"
-                    checked={formData.status === 'suspended'}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                  />
-                  <span>Bị khóa</span>
-                </label>
-              </div>
-            )}
+        {/* License Info */}
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Giấy Phép Lái Xe</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {driverLicense ? (
+                <>
+                  <div className="grid grid-cols-3 gap-2">
+                    {driverLicense.frontImageUrl && (
+                      <img
+                        src={driverLicense.frontImageUrl}
+                        alt="GPLX mặt trước"
+                        className="w-full h-24 object-cover rounded border"
+                      />
+                    )}
+                    {driverLicense.backImageUrl && (
+                      <img
+                        src={driverLicense.backImageUrl}
+                        alt="GPLX mặt sau"
+                        className="w-full h-24 object-cover rounded border"
+                      />
+                    )}
+                    {driverLicense.selfieImageUrl && (
+                      <img
+                        src={driverLicense.selfieImageUrl}
+                        alt="Selfie"
+                        className="w-full h-24 object-cover rounded border"
+                      />
+                    )}
+                  </div>
 
-            {userData && (
-              <div className="mt-4 text-sm text-gray-600">
-                <p>Ngày đăng ký:</p>
-                <p>{userData.registrationDate}</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  <div className="space-y-2 text-sm">
+                    <div>
+                      <span className="text-gray-500">Số GPLX:</span>
+                      <p className="font-medium">
+                        {driverLicense.licenseNumber}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Hạng:</span>
+                      <p className="font-medium">
+                        {driverLicense.licenseClass}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Ngày cấp:</span>
+                      <p className="font-medium">
+                        {new Date(driverLicense.issueDate).toLocaleDateString(
+                          "vi-VN"
+                        )}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Ngày hết hạn:</span>
+                      <p className="font-medium">
+                        {new Date(driverLicense.expiryDate).toLocaleDateString(
+                          "vi-VN"
+                        )}
+                      </p>
+                    </div>
+                  </div>
 
-        {/* Addresses */}
-        <Card className="lg:col-span-3">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Địa Chỉ</CardTitle>
-              {!viewMode && (
-                <Button variant="outline" size="sm" onClick={addAddress}>
-                  Thêm Địa Chỉ
-                </Button>
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="licenseVerified"
+                        checked={formData.licenseVerified}
+                        onCheckedChange={(checked: boolean) =>
+                          setFormData({ ...formData, licenseVerified: checked })
+                        }
+                      />
+                      <label htmlFor="licenseVerified" className="text-sm">
+                        Đã Xác Thực
+                      </label>
+                    </div>
+
+                    {!formData.licenseVerified && (
+                      <Textarea
+                        placeholder="Lý do từ chối (nếu có)..."
+                        value={formData.rejectedReason}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            rejectedReason: e.target.value,
+                          })
+                        }
+                        rows={2}
+                      />
+                    )}
+
+                    <div className="flex space-x-2">
+                      <Button
+                        onClick={() => handleVerifyLicense(true)}
+                        className="flex-1 bg-green-600 hover:bg-green-700"
+                        size="sm"
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        Xác Thực
+                      </Button>
+                      <Button
+                        onClick={() => handleVerifyLicense(false)}
+                        variant="destructive"
+                        className="flex-1"
+                        size="sm"
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        Từ Chối
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-gray-500">Chưa có thông tin GPLX</p>
               )}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {formData.addresses.map((address, index) => (
-              <div key={index} className="flex items-center space-x-2">
-                {viewMode ? (
-                  <p className="flex-1">{address}</p>
-                ) : (
-                  <>
-                    <Textarea
-                      value={address}
-                      onChange={(e) => updateAddress(index, e.target.value)}
-                      placeholder="Nhập địa chỉ..."
-                      className="flex-1"
-                      rows={2}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeAddress(index)}
-                      disabled={formData.addresses.length === 1}
-                    >
-                      <X className="h-4 w-4 text-red-600" />
-                    </Button>
-                  </>
-                )}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
 
-      {!viewMode && (
-        <div className="flex justify-end space-x-4">
-          <Button variant="outline" onClick={() => navigate('/users')}>
-            Hủy
-          </Button>
-          <Button onClick={handleSave} className="bg-[#007BFF] hover:bg-[#0056b3]">
-            <Save className="h-4 w-4 mr-2" />
-            Lưu
-          </Button>
+          <Card>
+            <CardHeader>
+              <CardTitle>Tài Khoản Ngân Hàng</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {bankAccount ? (
+                <div className="space-y-2 text-sm">
+                  <div>
+                    <span className="text-gray-500">Ngân hàng:</span>
+                    <p className="font-medium">{bankAccount.bankName}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Số tài khoản:</span>
+                    <p className="font-medium">{bankAccount.accountNumber}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Chủ tài khoản:</span>
+                    <p className="font-medium">{bankAccount.accountHolder}</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">
+                  Chưa có thông tin tài khoản
+                </p>
+              )}
+            </CardContent>
+          </Card>
         </div>
-      )}
+      </div>
     </div>
   );
 }

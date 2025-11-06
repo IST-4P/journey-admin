@@ -1,12 +1,14 @@
-import { Bell, LogOut, Menu } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
+import { Bell, LogOut, Menu } from "lucide-react";
+import toast from "react-hot-toast";
+import { Link } from "react-router-dom";
+import { authService } from "../../lib/services/auth.service";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '../ui/dropdown-menu';
+} from "../ui/dropdown-menu";
 
 interface TopBarProps {
   onLogout: () => void;
@@ -14,6 +16,20 @@ interface TopBarProps {
 }
 
 export function TopBar({ onLogout, onToggleSidebar }: TopBarProps) {
+  const handleLogout = async () => {
+    try {
+      // Gọi API logout để xóa cookies trên server
+      await authService.logout();
+      toast.success("Đăng xuất thành công");
+      // Gọi callback để cập nhật state
+      onLogout();
+    } catch (error) {
+      console.error("Logout error:", error);
+      // Vẫn đăng xuất ở client ngay cả khi API lỗi
+      onLogout();
+    }
+  };
+
   return (
     <div className="fixed top-0 left-0 right-0 bg-white shadow-sm border-b border-gray-200 z-40">
       <div className="px-4 sm:px-6 lg:px-8">
@@ -45,12 +61,14 @@ export function TopBar({ onLogout, onToggleSidebar }: TopBarProps) {
               <DropdownMenuTrigger className="flex items-center space-x-2 focus:outline-none">
                 <Avatar className="h-8 w-8">
                   <AvatarImage src="" />
-                  <AvatarFallback className="bg-[#007BFF] text-white">AD</AvatarFallback>
+                  <AvatarFallback className="bg-[#007BFF] text-white">
+                    AD
+                  </AvatarFallback>
                 </Avatar>
                 <span className="hidden sm:inline text-sm">Admin</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={onLogout}>
+                <DropdownMenuItem onClick={handleLogout}>
                   <LogOut className="h-4 w-4 mr-2" />
                   Đăng Xuất
                 </DropdownMenuItem>

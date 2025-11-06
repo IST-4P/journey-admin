@@ -1,18 +1,29 @@
-import { ChevronDown, ChevronUp, Edit, Filter, Plus, Search, X } from 'lucide-react';
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Pagination } from '../../components/common/Pagination';
-import { Badge } from '../../components/ui/badge';
-import { Button } from '../../components/ui/button';
-import { Input } from '../../components/ui/input';
-import { Label } from '../../components/ui/label';
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  ChevronUp,
+  Edit,
+  Filter,
+  Plus,
+  Search,
+  X,
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
+import { useNavigate } from "react-router-dom";
+import { Pagination } from "../../components/common/Pagination";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '../../components/ui/select';
+} from "../../components/ui/select";
 import {
   Table,
   TableBody,
@@ -20,193 +31,215 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '../../components/ui/table';
-import { DeleteVehicleDialog } from '../../components/vehicles/DeleteVehicleDialog';
-import { apiService, Vehicle } from '../../lib/api';
-import { useToast } from '../../components/ui/use-toast';
+} from "../../components/ui/table";
+import { DeleteVehicleDialog } from "../../components/vehicles/DeleteVehicleDialog";
+import * as vehicleService from "../../lib/services/vehicle.service";
+import type { GetManyVehiclesResponse } from "../../lib/types/vehicle.types";
 
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 15;
 
 export function VehiclesListPage() {
   const navigate = useNavigate();
-  const { toast } = useToast();
   const [currentPage, setCurrentPage] = useState(1);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [transmissionFilter, setTransmissionFilter] = useState('all');
-  const [fuelTypeFilter, setFuelTypeFilter] = useState('all');
-  const [seatsFilter, setSeatsFilter] = useState('all');
-  const [cityFilter, setCityFilter] = useState('all');
-  const [priceMin, setPriceMin] = useState('');
-  const [priceMax, setPriceMax] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [transmissionFilter, setTransmissionFilter] = useState("all");
+  const [fuelTypeFilter, setFuelTypeFilter] = useState("all");
+  const [seatsFilter, setSeatsFilter] = useState("all");
+  const [cityFilter, setCityFilter] = useState("all");
+  const [priceMin, setPriceMin] = useState("");
+  const [priceMax, setPriceMax] = useState("");
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  
-  // API state
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [totalItems, setTotalItems] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
+
+  // Sort states
+  const [sortBy, setSortBy] = useState<string>("createdAt");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+
+  const [vehiclesData, setVehiclesData] =
+    useState<GetManyVehiclesResponse | null>(null);
+  const [loading, setLoading] = useState(true);
   const [cities, setCities] = useState<string[]>([]);
 
   // Fetch vehicles from API
-  const fetchVehicles = async () => {
-    try {
-      setLoading(true);
-      const response = await apiService.getVehicles({
-        limit: ITEMS_PER_PAGE,
-        page: currentPage,
-        search: searchQuery || undefined,
-        type: typeFilter !== 'all' ? typeFilter : undefined,
-        status: statusFilter !== 'all' ? statusFilter : undefined,
-        transmission: transmissionFilter !== 'all' ? transmissionFilter : undefined,
-        fuelType: fuelTypeFilter !== 'all' ? fuelTypeFilter : undefined,
-        seats: seatsFilter !== 'all' ? parseInt(seatsFilter) : undefined,
-        city: cityFilter !== 'all' ? cityFilter : undefined,
-        priceMin: priceMin ? parseInt(priceMin) : undefined,
-        priceMax: priceMax ? parseInt(priceMax) : undefined,
-      });
-
-      setVehicles(response.data.vehicles);
-      setTotalItems(response.data.totalItems);
-      setTotalPages(response.data.totalPages);
-
-      // Extract unique cities
-      const uniqueCities = Array.from(new Set(response.data.vehicles.map(v => v.city).filter(Boolean)));
-      if (uniqueCities.length > cities.length) {
-        setCities(uniqueCities);
-      }
-    } catch (error: any) {
-      toast({
-        title: 'Lỗi',
-        description: error.message || 'Không thể tải danh sách phương tiện',
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Fetch vehicles when filters change
   useEffect(() => {
+    const fetchVehicles = async () => {
+      try {
+        setLoading(true);
+
+        const params: any = {
+          page: currentPage,
+          limit: ITEMS_PER_PAGE,
+          sort: sortBy,
+          order: sortOrder,
+        };
+
+        // Add filters
+        if (searchQuery) params.name = searchQuery;
+        if (typeFilter !== "all") params.type = typeFilter.toUpperCase();
+        if (statusFilter !== "all") params.status = statusFilter.toUpperCase();
+        if (transmissionFilter !== "all")
+          params.transmission = transmissionFilter.toUpperCase();
+        if (fuelTypeFilter !== "all")
+          params.fuelType = fuelTypeFilter.toUpperCase();
+        if (seatsFilter !== "all") params.seats = parseInt(seatsFilter);
+        if (cityFilter !== "all") params.city = cityFilter;
+
+        const data = await vehicleService.getManyVehicles(params);
+
+        // Kiểm tra nếu data là object rỗng hoặc không có vehicles
+        if (!data || Object.keys(data).length === 0 || !data.vehicles) {
+          setVehiclesData({
+            vehicles: [],
+            page: currentPage,
+            limit: ITEMS_PER_PAGE,
+            totalItems: 0,
+            totalPages: 0,
+          });
+          setCities([]);
+        } else {
+          setVehiclesData(data);
+
+          // Extract unique cities from all vehicles for filter dropdown
+          const uniqueCities = Array.from(
+            new Set(data.vehicles.map((v) => v.city).filter(Boolean))
+          );
+          setCities(uniqueCities);
+        }
+      } catch (error: any) {
+        console.error("Error fetching vehicles:", error);
+        toast.error(
+          error.response?.data?.message || "Không thể tải danh sách phương tiện"
+        );
+        // Set empty data on error
+        setVehiclesData({
+          vehicles: [],
+          page: 1,
+          limit: ITEMS_PER_PAGE,
+          totalItems: 0,
+          totalPages: 0,
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchVehicles();
-  }, [currentPage, searchQuery, typeFilter, statusFilter, transmissionFilter, fuelTypeFilter, seatsFilter, cityFilter, priceMin, priceMax]);
+  }, [
+    currentPage,
+    searchQuery,
+    typeFilter,
+    statusFilter,
+    transmissionFilter,
+    fuelTypeFilter,
+    seatsFilter,
+    cityFilter,
+    sortBy,
+    sortOrder,
+  ]);
 
   // Check if any advanced filters are active
   const hasActiveFilters =
-    transmissionFilter !== 'all' ||
-    fuelTypeFilter !== 'all' ||
-    seatsFilter !== 'all' ||
-    cityFilter !== 'all' ||
-    priceMin !== '' ||
-    priceMax !== '';
+    transmissionFilter !== "all" ||
+    fuelTypeFilter !== "all" ||
+    seatsFilter !== "all" ||
+    cityFilter !== "all" ||
+    priceMin !== "" ||
+    priceMax !== "";
 
   // Reset all filters
   const resetFilters = () => {
-    setSearchQuery('');
-    setTypeFilter('all');
-    setStatusFilter('all');
-    setTransmissionFilter('all');
-    setFuelTypeFilter('all');
-    setSeatsFilter('all');
-    setCityFilter('all');
-    setPriceMin('');
-    setPriceMax('');
+    setSearchQuery("");
+    setTypeFilter("all");
+    setStatusFilter("all");
+    setTransmissionFilter("all");
+    setFuelTypeFilter("all");
+    setSeatsFilter("all");
+    setCityFilter("all");
+    setPriceMin("");
+    setPriceMax("");
+    setSortBy("createdAt");
+    setSortOrder("desc");
     setCurrentPage(1);
   };
 
-  // Handle delete vehicle
-  const handleDeleteVehicle = async (id: string) => {
-    try {
-      await apiService.deleteVehicle(id);
-      toast({
-        title: 'Thành công',
-        description: 'Đã xóa phương tiện',
-      });
-      fetchVehicles(); // Refresh list
-    } catch (error: any) {
-      toast({
-        title: 'Lỗi',
-        description: error.message || 'Không thể xóa phương tiện',
-        variant: 'destructive',
-      });
-    }
-  };
+  // Get data from API response
+  const vehicles = vehiclesData?.vehicles || [];
+  const totalPages = vehiclesData?.totalPages || 0;
+  const totalItems = vehiclesData?.totalItems || 0;
 
   const getStatusColor = (status: string) => {
-    const statusUpper = status.toUpperCase();
-    switch (statusUpper) {
-      case 'ACTIVE':
-        return 'bg-green-100 text-green-800';
-      case 'RESERVED':
-        return 'bg-blue-100 text-blue-800';
-      case 'MAINTENANCE':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'INACTIVE':
-        return 'bg-gray-100 text-gray-800';
+    const upperStatus = status.toUpperCase();
+    switch (upperStatus) {
+      case "ACTIVE":
+        return "bg-green-100 text-green-800";
+      case "RENTED":
+        return "bg-blue-100 text-blue-800";
+      case "MAINTENANCE":
+        return "bg-yellow-100 text-yellow-800";
+      case "RESERVED":
+        return "bg-purple-100 text-purple-800";
+      case "INACTIVE":
+        return "bg-gray-100 text-gray-800";
       default:
-        return 'bg-gray-100 text-gray-800';
+        return "bg-gray-100 text-gray-800";
     }
   };
 
   const getStatusLabel = (status: string) => {
-    const statusUpper = status.toUpperCase();
-    switch (statusUpper) {
-      case 'ACTIVE':
-        return 'Hoạt động';
-      case 'RESERVED':
-        return 'Đã đặt';
-      case 'MAINTENANCE':
-        return 'Bảo trì';
-      case 'INACTIVE':
-        return 'Không hoạt động';
+    const upperStatus = status.toUpperCase();
+    switch (upperStatus) {
+      case "ACTIVE":
+        return "Hoạt động";
+      case "RENTED":
+        return "Đang thuê";
+      case "MAINTENANCE":
+        return "Bảo trì";
+      case "RESERVED":
+        return "Đã đặt";
+      case "INACTIVE":
+        return "Không hoạt động";
       default:
         return status;
     }
   };
 
-  const getTransmissionLabel = (transmission: string) => {
-    const transmissionUpper = transmission.toUpperCase();
-    switch (transmissionUpper) {
-      case 'AUTOMATIC':
-        return 'Tự động';
-      case 'MANUAL':
-        return 'Số sàn';
-      default:
-        return transmission;
-    }
-  };
-
-  const getFuelTypeLabel = (fuelType: string) => {
-    const fuelTypeUpper = fuelType.toUpperCase();
-    switch (fuelTypeUpper) {
-      case 'GASOLINE':
-        return 'Xăng';
-      case 'DIESEL':
-        return 'Dầu Diesel';
-      case 'ELECTRIC':
-        return 'Điện';
-      case 'HYBRID':
-        return 'Hybrid';
-      default:
-        return fuelType;
-    }
-  };
-
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('vi-VN', {
-      style: 'currency',
-      currency: 'VND',
+    return new Intl.NumberFormat("vi-VN", {
+      style: "currency",
+      currency: "VND",
     }).format(value);
+  };
+
+  // Handle sort column click
+  const handleSort = (column: string) => {
+    if (sortBy === column) {
+      // Toggle order if same column
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      // Set new column with default desc order
+      setSortBy(column);
+      setSortOrder("desc");
+    }
+  };
+
+  // Render sort icon
+  const renderSortIcon = (column: string) => {
+    if (sortBy !== column) return null;
+    return sortOrder === "asc" ? (
+      <ArrowUp className="h-3 w-3 inline ml-1" />
+    ) : (
+      <ArrowDown className="h-3 w-3 inline ml-1" />
+    );
   };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl">Quản Lý Phương Tiện</h2>
-        <Button 
+        <Button
           className="bg-[#007BFF] hover:bg-[#0056b3]"
-          onClick={() => navigate('/vehicles/new')}
+          onClick={() => navigate("/vehicles/new")}
         >
           <Plus className="h-4 w-4 mr-2" />
           Thêm Phương Tiện
@@ -216,8 +249,8 @@ export function VehiclesListPage() {
       {/* Filters */}
       <div className="bg-white rounded-lg shadow p-4 space-y-4">
         {/* Basic Filters */}
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="relative lg:col-span-2">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
               placeholder="Tìm kiếm theo tên xe hoặc vị trí..."
@@ -227,27 +260,72 @@ export function VehiclesListPage() {
             />
           </div>
           <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectTrigger>
               <SelectValue placeholder="Loại xe" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tất cả loại</SelectItem>
-              <SelectItem value="CAR">Ô tô</SelectItem>
-              <SelectItem value="MOTORBIKE">Xe máy</SelectItem>
+              <SelectItem value="car">Ô tô</SelectItem>
+              <SelectItem value="motorcycle">Xe máy</SelectItem>
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectTrigger>
               <SelectValue placeholder="Trạng thái" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tất cả trạng thái</SelectItem>
-              <SelectItem value="ACTIVE">Hoạt động</SelectItem>
-              <SelectItem value="RESERVED">Đã đặt</SelectItem>
-              <SelectItem value="MAINTENANCE">Bảo trì</SelectItem>
-              <SelectItem value="INACTIVE">Không hoạt động</SelectItem>
+              <SelectItem value="active">Hoạt động</SelectItem>
+              <SelectItem value="inactive">Không hoạt động</SelectItem>
+              <SelectItem value="rented">Đang thuê</SelectItem>
+              <SelectItem value="reserved">Đã đặt</SelectItem>
+              <SelectItem value="maintenance">Bảo trì</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+
+        {/* Sort Options */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t">
+          <div className="space-y-2">
+            <Label>Sắp Xếp Theo</Label>
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="createdAt">Ngày tạo</SelectItem>
+                <SelectItem value="name">Tên xe</SelectItem>
+                <SelectItem value="type">Loại xe</SelectItem>
+                <SelectItem value="brandId">Thương hiệu</SelectItem>
+                <SelectItem value="modelId">Mẫu xe</SelectItem>
+                <SelectItem value="seats">Số chỗ ngồi</SelectItem>
+                <SelectItem value="fuelType">Nhiên liệu</SelectItem>
+                <SelectItem value="transmission">Hộp số</SelectItem>
+                <SelectItem value="pricePerDay">Giá thuê/ngày</SelectItem>
+                <SelectItem value="pricePerHour">Giá thuê/giờ</SelectItem>
+                <SelectItem value="city">Thành phố</SelectItem>
+                <SelectItem value="ward">Quận/Huyện</SelectItem>
+                <SelectItem value="status">Trạng thái</SelectItem>
+                <SelectItem value="averageRating">Đánh giá</SelectItem>
+                <SelectItem value="totalTrips">Số chuyến</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Thứ Tự</Label>
+            <Select
+              value={sortOrder}
+              onValueChange={(value: "asc" | "desc") => setSortOrder(value)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="asc">Tăng dần</SelectItem>
+                <SelectItem value="desc">Giảm dần</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* Advanced Filters Toggle */}
@@ -265,11 +343,26 @@ export function VehiclesListPage() {
               <ChevronDown className="h-4 w-4 ml-2" />
             )}
             {hasActiveFilters && (
-              <Badge className="ml-2 bg-[#007BFF]">{Object.values({transmissionFilter, fuelTypeFilter, seatsFilter, cityFilter, priceMin, priceMax}).filter(v => v && v !== 'all').length}</Badge>
+              <Badge className="ml-2 bg-[#007BFF]">
+                {
+                  Object.values({
+                    transmissionFilter,
+                    fuelTypeFilter,
+                    seatsFilter,
+                    cityFilter,
+                    priceMin,
+                    priceMax,
+                  }).filter((v) => v && v !== "all").length
+                }
+              </Badge>
             )}
           </Button>
           {hasActiveFilters && (
-            <Button variant="ghost" onClick={resetFilters} className="text-red-600 hover:text-red-700">
+            <Button
+              variant="ghost"
+              onClick={resetFilters}
+              className="text-red-600 hover:text-red-700"
+            >
               <X className="h-4 w-4 mr-2" />
               Xóa Bộ Lọc
             </Button>
@@ -281,14 +374,17 @@ export function VehiclesListPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-3 border-t">
             <div className="space-y-2">
               <Label>Hộp Số</Label>
-              <Select value={transmissionFilter} onValueChange={setTransmissionFilter}>
+              <Select
+                value={transmissionFilter}
+                onValueChange={setTransmissionFilter}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Chọn hộp số" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tất cả</SelectItem>
-                  <SelectItem value="AUTOMATIC">Tự động</SelectItem>
-                  <SelectItem value="MANUAL">Số sàn</SelectItem>
+                  <SelectItem value="automatic">Tự động</SelectItem>
+                  <SelectItem value="manual">Số sàn</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -301,10 +397,13 @@ export function VehiclesListPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tất cả</SelectItem>
-                  <SelectItem value="GASOLINE">Xăng</SelectItem>
-                  <SelectItem value="DIESEL">Dầu Diesel</SelectItem>
-                  <SelectItem value="ELECTRIC">Điện</SelectItem>
-                  <SelectItem value="HYBRID">Hybrid</SelectItem>
+                  <SelectItem value="gasoline">Xăng</SelectItem>
+                  <SelectItem value="diesel">Dầu Diesel</SelectItem>
+                  <SelectItem value="electric">Điện</SelectItem>
+                  <SelectItem value="hybrid">Hybrid</SelectItem>
+                  <SelectItem value="unleaded_gasoline">
+                    Xăng không chì
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -335,7 +434,7 @@ export function VehiclesListPage() {
                 <SelectContent>
                   <SelectItem value="all">Tất cả</SelectItem>
                   {cities.map((city) => (
-                    <SelectItem key={city} value={city || ''}>
+                    <SelectItem key={city} value={city || ""}>
                       {city}
                     </SelectItem>
                   ))}
@@ -375,95 +474,143 @@ export function VehiclesListPage() {
         </div>
       </div>
 
+      {/* Loading State */}
+      {loading && (
+        <div className="bg-white rounded-lg shadow p-8 text-center">
+          <p className="text-gray-500">Đang tải dữ liệu...</p>
+        </div>
+      )}
+
       {/* Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center p-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#007BFF]"></div>
-          </div>
-        ) : vehicles.length === 0 ? (
-          <div className="text-center p-12 text-gray-500">
-            <p className="text-lg">Không tìm thấy phương tiện nào</p>
-          </div>
-        ) : (
+      {!loading && (
+        <div className="bg-white rounded-lg shadow overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[80px]">Hình ảnh</TableHead>
-                <TableHead>Tên Xe</TableHead>
-                <TableHead>Loại</TableHead>
-                <TableHead>Số chỗ</TableHead>
-                <TableHead>Hộp số</TableHead>
-                <TableHead>Nhiên liệu</TableHead>
-                <TableHead>Giá/Ngày</TableHead>
-                <TableHead>Vị Trí</TableHead>
-                <TableHead>Trạng Thái</TableHead>
+                <TableHead>Hình Ảnh</TableHead>
+                <TableHead
+                  className="cursor-pointer hover:bg-gray-50"
+                  onClick={() => handleSort("name")}
+                >
+                  Tên Xe {renderSortIcon("name")}
+                </TableHead>
+                <TableHead
+                  className="cursor-pointer hover:bg-gray-50"
+                  onClick={() => handleSort("type")}
+                >
+                  Loại {renderSortIcon("type")}
+                </TableHead>
+                <TableHead
+                  className="cursor-pointer hover:bg-gray-50"
+                  onClick={() => handleSort("seats")}
+                >
+                  Số Chỗ {renderSortIcon("seats")}
+                </TableHead>
+                <TableHead
+                  className="cursor-pointer hover:bg-gray-50"
+                  onClick={() => handleSort("pricePerDay")}
+                >
+                  Giá/Ngày {renderSortIcon("pricePerDay")}
+                </TableHead>
+                <TableHead
+                  className="cursor-pointer hover:bg-gray-50"
+                  onClick={() => handleSort("city")}
+                >
+                  Vị Trí {renderSortIcon("city")}
+                </TableHead>
+                <TableHead
+                  className="cursor-pointer hover:bg-gray-50"
+                  onClick={() => handleSort("averageRating")}
+                >
+                  Đánh Giá {renderSortIcon("averageRating")}
+                </TableHead>
+                <TableHead
+                  className="cursor-pointer hover:bg-gray-50"
+                  onClick={() => handleSort("status")}
+                >
+                  Trạng Thái {renderSortIcon("status")}
+                </TableHead>
                 <TableHead className="text-right">Hành Động</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {vehicles.map((vehicle, index) => (
-                <TableRow key={vehicle.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                  <TableCell>
-                    {vehicle.images && vehicle.images.length > 0 ? (
-                      <img 
-                        src={vehicle.images[0]} 
-                        alt={vehicle.name}
-                        className="w-16 h-16 object-cover rounded"
-                        onError={(e) => {
-                          e.currentTarget.src = 'https://via.placeholder.com/64?text=No+Image';
-                        }}
-                      />
-                    ) : (
-                      <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs">
-                        No Image
-                      </div>
-                    )}
-                  </TableCell>
-                  <TableCell className="font-medium">{vehicle.name}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">
-                      {vehicle.type === 'CAR' ? 'Ô tô' : 'Xe máy'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{vehicle.seats} chỗ</TableCell>
-                  <TableCell>{getTransmissionLabel(vehicle.transmission)}</TableCell>
-                  <TableCell>{getFuelTypeLabel(vehicle.fuelType)}</TableCell>
-                  <TableCell className="font-semibold">{formatCurrency(vehicle.pricePerDay)}</TableCell>
-                  <TableCell>
-                    <div className="text-sm">
-                      <div>{vehicle.city}</div>
-                      <div className="text-gray-500 text-xs">{vehicle.ward}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={getStatusColor(vehicle.status)}>
-                      {getStatusLabel(vehicle.status)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end space-x-2">
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={() => navigate(`/vehicles/${vehicle.id}`)}
-                        title="Xem chi tiết"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <DeleteVehicleDialog
-                        vehicleId={vehicle.id}
-                        vehicleName={vehicle.name}
-                        onConfirm={handleDeleteVehicle}
-                      />
-                    </div>
+              {vehicles.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={9}
+                    className="text-center py-8 text-gray-500"
+                  >
+                    Không tìm thấy phương tiện nào
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                vehicles.map((vehicle, index) => (
+                  <TableRow
+                    key={vehicle.id}
+                    className={index % 2 === 0 ? "bg-gray-50" : ""}
+                  >
+                    <TableCell>
+                      <img
+                        src={vehicle.images[0] || "/placeholder-car.jpg"}
+                        alt={vehicle.name}
+                        className="w-16 h-16 object-cover rounded"
+                      />
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {vehicle.name}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        {vehicle.type === "CAR" ? "Ô tô" : "Xe máy"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{vehicle.seats} chỗ</Badge>
+                    </TableCell>
+                    <TableCell>{formatCurrency(vehicle.pricePerDay)}</TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        <div>{vehicle.city}</div>
+                        <div className="text-gray-500">{vehicle.location}</div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center">
+                        <span className="text-yellow-500 mr-1">★</span>
+                        <span>{vehicle.averageRating.toFixed(1)}</span>
+                        <span className="text-gray-400 text-sm ml-1">
+                          ({vehicle.totalTrips} chuyến)
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={getStatusColor(vehicle.status)}>
+                        {getStatusLabel(vehicle.status)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end space-x-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigate(`/vehicles/${vehicle.id}`)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <DeleteVehicleDialog
+                          vehicleId={vehicle.id}
+                          vehicleName={vehicle.name}
+                          onConfirm={(id) => console.log("Delete vehicle:", id)}
+                        />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Pagination */}
       <Pagination

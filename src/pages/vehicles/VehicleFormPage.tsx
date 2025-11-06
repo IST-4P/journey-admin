@@ -1,30 +1,37 @@
-import { ArrowLeft, Plus, Save, Upload, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Button } from '../../components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
-import { Checkbox } from '../../components/ui/checkbox';
-import { Input } from '../../components/ui/input';
-import { Label } from '../../components/ui/label';
+import { ArrowLeft, Plus, Save, Trash2, Upload, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
+import { useNavigate, useParams } from "react-router-dom";
+import { Button } from "../../components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../../components/ui/card";
+import { Checkbox } from "../../components/ui/checkbox";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '../../components/ui/select';
-import { Textarea } from '../../components/ui/textarea';
-import { mockVehicles } from '../../lib/mockData';
+} from "../../components/ui/select";
+import { Textarea } from "../../components/ui/textarea";
+import * as vehicleService from "../../lib/services/vehicle.service";
+import type { Brand, Model } from "../../lib/types/vehicle.types";
 
 interface VehicleFormData {
-  type: 'CAR' | 'MOTORBIKE';
+  type: "CAR" | "MOTORCYCLE";
   name: string;
-  brand: string;
-  model: string;
+  brandId: string;
+  modelId: string;
   licensePlate: string;
   seats: number;
-  fuelType: 'GASOLINE' | 'DIESEL' | 'ELECTRIC' | 'HYBRID';
-  transmission: 'AUTOMATIC' | 'MANUAL';
+  fuelType: "GASOLINE" | "UNLEADED_GASOLINE" | "DIESEL" | "ELECTRIC" | "HYBRID";
+  transmission: "AUTOMATIC" | "MANUAL";
   pricePerHour: number;
   pricePerDay: number;
   location: string;
@@ -34,89 +41,134 @@ interface VehicleFormData {
   longitude: number;
   description: string;
   terms: string[];
-  status: 'ACTIVE' | 'INACTIVE';
+  status: "ACTIVE" | "INACTIVE" | "MAINTENANCE" | "RESERVED" | "RENTED";
   images: string[];
-  vehicleFeatures: string[];
+  featureIds: string[];
 }
 
 const initialFormData: VehicleFormData = {
-  type: 'CAR',
-  name: '',
-  brand: '',
-  model: '',
-  licensePlate: '',
+  type: "CAR",
+  name: "",
+  brandId: "",
+  modelId: "",
+  licensePlate: "",
   seats: 5,
-  fuelType: 'GASOLINE',
-  transmission: 'AUTOMATIC',
+  fuelType: "GASOLINE",
+  transmission: "AUTOMATIC",
   pricePerHour: 0,
   pricePerDay: 0,
-  location: '',
-  city: '',
-  ward: '',
+  location: "",
+  city: "",
+  ward: "",
   latitude: 0,
   longitude: 0,
-  description: '',
+  description: "",
   terms: [],
-  status: 'ACTIVE',
+  status: "ACTIVE",
   images: [],
-  vehicleFeatures: [],
+  featureIds: [],
 };
 
-const defaultFeatures = [
-  'Bluetooth',
-  'Camera lùi',
-  'Điều hòa',
-  'Cửa sổ trời',
-  'Cảm biến lùi',
-  'Định vị GPS',
-  'Túi khí',
-  'ABS',
-  'Cruise Control',
-  'Cảm biến áp suất lốp',
-];
+interface FeatureDisplay {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+}
 
 export function VehicleFormPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const isNew = !id || id === 'new';
-  
+  const isNew = !id || id === "new";
+
   const [formData, setFormData] = useState<VehicleFormData>(initialFormData);
-  const [termInput, setTermInput] = useState('');
+  const [termInput, setTermInput] = useState("");
   const [imageUrls, setImageUrls] = useState<string[]>([]);
-  const [availableFeatures, setAvailableFeatures] = useState<string[]>(defaultFeatures);
-  const [customFeatureInput, setCustomFeatureInput] = useState('');
+
+  // Brands, Models and Features
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [models, setModels] = useState<Model[]>([]);
+  const [features, setFeatures] = useState<FeatureDisplay[]>([]);
+  const [loadingBrands, setLoadingBrands] = useState(false);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [loadingFeatures, setLoadingFeatures] = useState(false);
+
+  // Feature form
+  const [showFeatureForm, setShowFeatureForm] = useState(false);
+  const [newFeature, setNewFeature] = useState({
+    name: "",
+    description: "",
+    icon: "",
+  });
+
+  // Fetch all brands on mount
+  useEffect(() => {
+    const fetchBrands = async () => {
+      try {
+        setLoadingBrands(true);
+        const data = await vehicleService.getAllBrands();
+        setBrands(data.brands as Brand[]);
+      } catch (error) {
+        console.error("Error fetching brands:", error);
+        toast.error("Không thể tải danh sách hãng xe");
+      } finally {
+        setLoadingBrands(false);
+      }
+    };
+
+    fetchBrands();
+  }, []);
+
+  // Fetch models when brandId changes
+  useEffect(() => {
+    const fetchModels = async () => {
+      if (!formData.brandId) {
+        setModels([]);
+        return;
+      }
+
+      try {
+        setLoadingModels(true);
+        const data = await vehicleService.getAllModels({
+          brandId: formData.brandId,
+        });
+        setModels(data.models as Model[]);
+      } catch (error) {
+        console.error("Error fetching models:", error);
+        toast.error("Không thể tải danh sách mẫu xe");
+      } finally {
+        setLoadingModels(false);
+      }
+    };
+
+    fetchModels();
+  }, [formData.brandId]);
+
+  // Fetch features on mount
+  useEffect(() => {
+    const fetchFeatures = async () => {
+      try {
+        setLoadingFeatures(true);
+        const data = await vehicleService.getAllFeatures();
+        setFeatures(data.features as FeatureDisplay[]);
+      } catch (error) {
+        toast.error("Không thể tải danh sách tính năng");
+        console.error("Error fetching features:", error);
+      } finally {
+        setLoadingFeatures(false);
+      }
+    };
+    fetchFeatures();
+  }, []);
 
   // Load vehicle data when editing
   useEffect(() => {
     if (!isNew && id) {
-      const vehicle = mockVehicles.find((v) => v.id === Number(id));
-      if (vehicle) {
-        setFormData({
-          type: vehicle.type === 'car' ? 'CAR' : 'MOTORBIKE',
-          name: vehicle.name,
-          brand: vehicle.brand || '',
-          model: vehicle.model || '',
-          licensePlate: vehicle.licensePlate || '',
-          seats: vehicle.seats || 5,
-          fuelType: 'GASOLINE',
-          transmission: 'AUTOMATIC',
-          pricePerHour: vehicle.pricePerHour || 0,
-          pricePerDay: vehicle.pricePerDay,
-          location: vehicle.location,
-          city: vehicle.city || '',
-          ward: vehicle.ward || '',
-          latitude: vehicle.latitude || 0,
-          longitude: vehicle.longitude || 0,
-          description: vehicle.description || '',
-          terms: [],
-          status: vehicle.status === 'available' ? 'ACTIVE' : 'INACTIVE',
-          images: vehicle.images || [],
-          vehicleFeatures: vehicle.features || [],
-        });
-        setImageUrls(vehicle.images || []);
-      }
+      // TODO: Fetch vehicle data from API
+      // const vehicle = await vehicleService.getVehicle(id);
+      // setFormData(vehicle);
     }
-  }, [id, isNew]);
+  }, [isNew, id]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,8 +176,8 @@ export function VehicleFormPage() {
       ...formData,
       images: imageUrls,
     };
-    console.log(`${isNew ? 'Create' : 'Update'} vehicle data:`, submitData);
-    navigate('/vehicles');
+    console.log(`${isNew ? "Create" : "Update"} vehicle data:`, submitData);
+    navigate("/vehicles");
   };
 
   const handleAddTerm = () => {
@@ -134,7 +186,7 @@ export function VehicleFormPage() {
         ...formData,
         terms: [...formData.terms, termInput.trim()],
       });
-      setTermInput('');
+      setTermInput("");
     }
   };
 
@@ -145,29 +197,67 @@ export function VehicleFormPage() {
     });
   };
 
-  const toggleFeature = (feature: string) => {
+  const toggleFeature = (featureId: string) => {
     setFormData({
       ...formData,
-      vehicleFeatures: formData.vehicleFeatures.includes(feature)
-        ? formData.vehicleFeatures.filter((f) => f !== feature)
-        : [...formData.vehicleFeatures, feature],
+      featureIds: formData.featureIds.includes(featureId)
+        ? formData.featureIds.filter((f) => f !== featureId)
+        : [...formData.featureIds, featureId],
     });
   };
 
-  const handleAddCustomFeature = () => {
-    if (customFeatureInput.trim() && !availableFeatures.includes(customFeatureInput.trim())) {
-      const newFeature = customFeatureInput.trim();
-      setAvailableFeatures([...availableFeatures, newFeature]);
+  const handleCreateFeature = async () => {
+    if (
+      !newFeature.name.trim() ||
+      !newFeature.description.trim() ||
+      !newFeature.icon.trim()
+    ) {
+      toast.error("Vui lòng điền đầy đủ thông tin tính năng");
+      return;
+    }
+
+    try {
+      await vehicleService.createFeature(newFeature);
+      toast.success("Thêm tính năng thành công");
+
+      // Refresh features list
+      const data = await vehicleService.getAllFeatures();
+      setFeatures(data.features as FeatureDisplay[]);
+
+      // Reset form
+      setNewFeature({ name: "", description: "", icon: "" });
+      setShowFeatureForm(false);
+    } catch (error) {
+      console.error("Error creating feature:", error);
+      toast.error("Không thể thêm tính năng");
+    }
+  };
+
+  const handleDeleteFeature = async (featureId: string) => {
+    if (!confirm("Bạn có chắc muốn xóa tính năng này?")) {
+      return;
+    }
+
+    try {
+      await vehicleService.deleteFeature(featureId);
+      toast.success("Xóa tính năng thành công");
+
+      // Remove from features list
+      setFeatures(features.filter((f) => f.id !== featureId));
+
+      // Remove from selected features
       setFormData({
         ...formData,
-        vehicleFeatures: [...formData.vehicleFeatures, newFeature],
+        featureIds: formData.featureIds.filter((id) => id !== featureId),
       });
-      setCustomFeatureInput('');
+    } catch (error) {
+      console.error("Error deleting feature:", error);
+      toast.error("Không thể xóa tính năng");
     }
   };
 
   const handleAddImage = () => {
-    const url = prompt('Nhập URL hình ảnh:');
+    const url = prompt("Nhập URL hình ảnh:");
     if (url && url.trim()) {
       setImageUrls([...imageUrls, url.trim()]);
     }
@@ -181,11 +271,11 @@ export function VehicleFormPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <Button variant="ghost" onClick={() => navigate('/vehicles')}>
+          <Button variant="ghost" onClick={() => navigate("/vehicles")}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <h2 className="text-2xl">
-            {isNew ? 'Thêm Phương Tiện Mới' : 'Chỉnh Sửa Phương Tiện'}
+            {isNew ? "Thêm Phương Tiện Mới" : "Chỉnh Sửa Phương Tiện"}
           </h2>
         </div>
       </div>
@@ -202,7 +292,7 @@ export function VehicleFormPage() {
                 <Label htmlFor="type">Loại Phương Tiện *</Label>
                 <Select
                   value={formData.type}
-                  onValueChange={(value: 'CAR' | 'MOTORBIKE') =>
+                  onValueChange={(value: "CAR" | "MOTORCYCLE") =>
                     setFormData({ ...formData, type: value })
                   }
                 >
@@ -211,7 +301,7 @@ export function VehicleFormPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="CAR">Ô tô</SelectItem>
-                    <SelectItem value="MOTORBIKE">Xe máy</SelectItem>
+                    <SelectItem value="MOTORCYCLE">Xe máy</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -221,32 +311,66 @@ export function VehicleFormPage() {
                 <Input
                   id="name"
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
                   placeholder="Toyota Vios 2023"
                   required
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="brand">Hãng *</Label>
-                <Input
-                  id="brand"
-                  value={formData.brand}
-                  onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                  placeholder="Toyota"
-                  required
-                />
+                <Label htmlFor="brandId">Hãng *</Label>
+                <Select
+                  value={formData.brandId}
+                  onValueChange={(value: string) =>
+                    setFormData({ ...formData, brandId: value, modelId: "" })
+                  }
+                  disabled={loadingBrands}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={loadingBrands ? "Đang tải..." : "Chọn hãng"}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {brands.map((brand) => (
+                      <SelectItem key={brand.id} value={brand.id}>
+                        {brand.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="model">Mẫu *</Label>
-                <Input
-                  id="model"
-                  value={formData.model}
-                  onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-                  placeholder="Vios"
-                  required
-                />
+                <Label htmlFor="modelId">Mẫu *</Label>
+                <Select
+                  value={formData.modelId}
+                  onValueChange={(value: string) =>
+                    setFormData({ ...formData, modelId: value })
+                  }
+                  disabled={!formData.brandId || loadingModels}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={
+                        !formData.brandId
+                          ? "Chọn hãng trước"
+                          : loadingModels
+                          ? "Đang tải..."
+                          : "Chọn mẫu"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {models.map((model) => (
+                      <SelectItem key={model.id} value={model.id}>
+                        {model.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
@@ -254,7 +378,9 @@ export function VehicleFormPage() {
                 <Input
                   id="licensePlate"
                   value={formData.licensePlate}
-                  onChange={(e) => setFormData({ ...formData, licensePlate: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, licensePlate: e.target.value })
+                  }
                   placeholder="51A-12345"
                   required
                 />
@@ -266,7 +392,12 @@ export function VehicleFormPage() {
                   id="seats"
                   type="number"
                   value={formData.seats}
-                  onChange={(e) => setFormData({ ...formData, seats: parseInt(e.target.value) })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      seats: parseInt(e.target.value),
+                    })
+                  }
                   min="1"
                   required
                 />
@@ -276,7 +407,7 @@ export function VehicleFormPage() {
                 <Label htmlFor="fuelType">Loại Nhiên Liệu *</Label>
                 <Select
                   value={formData.fuelType}
-                  onValueChange={(value: VehicleFormData['fuelType']) =>
+                  onValueChange={(value: VehicleFormData["fuelType"]) =>
                     setFormData({ ...formData, fuelType: value })
                   }
                 >
@@ -296,7 +427,7 @@ export function VehicleFormPage() {
                 <Label htmlFor="transmission">Hộp Số *</Label>
                 <Select
                   value={formData.transmission}
-                  onValueChange={(value: 'AUTOMATIC' | 'MANUAL') =>
+                  onValueChange={(value: "AUTOMATIC" | "MANUAL") =>
                     setFormData({ ...formData, transmission: value })
                   }
                 >
@@ -327,7 +458,10 @@ export function VehicleFormPage() {
                   type="number"
                   value={formData.pricePerHour}
                   onChange={(e) =>
-                    setFormData({ ...formData, pricePerHour: parseInt(e.target.value) })
+                    setFormData({
+                      ...formData,
+                      pricePerHour: parseInt(e.target.value),
+                    })
                   }
                   placeholder="50000"
                   min="0"
@@ -342,7 +476,10 @@ export function VehicleFormPage() {
                   type="number"
                   value={formData.pricePerDay}
                   onChange={(e) =>
-                    setFormData({ ...formData, pricePerDay: parseInt(e.target.value) })
+                    setFormData({
+                      ...formData,
+                      pricePerDay: parseInt(e.target.value),
+                    })
                   }
                   placeholder="800000"
                   min="0"
@@ -365,7 +502,9 @@ export function VehicleFormPage() {
                 <Input
                   id="location"
                   value={formData.location}
-                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, location: e.target.value })
+                  }
                   placeholder="123 Nguyễn Văn A, Quận 1"
                   required
                 />
@@ -376,7 +515,9 @@ export function VehicleFormPage() {
                 <Input
                   id="city"
                   value={formData.city}
-                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, city: e.target.value })
+                  }
                   placeholder="TP.HCM"
                   required
                 />
@@ -387,7 +528,9 @@ export function VehicleFormPage() {
                 <Input
                   id="ward"
                   value={formData.ward}
-                  onChange={(e) => setFormData({ ...formData, ward: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, ward: e.target.value })
+                  }
                   placeholder="Phường Bến Nghé"
                   required
                 />
@@ -400,7 +543,12 @@ export function VehicleFormPage() {
                   type="number"
                   step="0.0001"
                   value={formData.latitude}
-                  onChange={(e) => setFormData({ ...formData, latitude: parseFloat(e.target.value) })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      latitude: parseFloat(e.target.value),
+                    })
+                  }
                   placeholder="10.7769"
                 />
               </div>
@@ -413,7 +561,10 @@ export function VehicleFormPage() {
                   step="0.0001"
                   value={formData.longitude}
                   onChange={(e) =>
-                    setFormData({ ...formData, longitude: parseFloat(e.target.value) })
+                    setFormData({
+                      ...formData,
+                      longitude: parseFloat(e.target.value),
+                    })
                   }
                   placeholder="106.7009"
                 />
@@ -433,7 +584,9 @@ export function VehicleFormPage() {
               <Textarea
                 id="description"
                 value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, description: e.target.value })
+                }
                 placeholder="Xe mới, sạch sẽ, tiết kiệm nhiên liệu"
                 rows={4}
               />
@@ -446,40 +599,126 @@ export function VehicleFormPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>Tiện Nghi</CardTitle>
-              <div className="flex items-center gap-2">
-                <Input
-                  value={customFeatureInput}
-                  onChange={(e) => setCustomFeatureInput(e.target.value)}
-                  placeholder="Thêm tiện nghi..."
-                  className="w-48"
-                  onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddCustomFeature())}
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={handleAddCustomFeature}
-                  className="bg-[#007BFF] hover:bg-[#0056b3]"
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setShowFeatureForm(!showFeatureForm)}
+                className="bg-[#007BFF] hover:bg-[#0056b3]"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Thêm Tính Năng
+              </Button>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {availableFeatures.map((feature) => (
-                <div key={feature} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={feature}
-                    checked={formData.vehicleFeatures.includes(feature)}
-                    onCheckedChange={() => toggleFeature(feature)}
+          <CardContent className="space-y-4">
+            {/* Add Feature Form */}
+            {showFeatureForm && (
+              <div className="border rounded-lg p-4 bg-muted/50 space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="featureName">Tên Tính Năng *</Label>
+                  <Input
+                    id="featureName"
+                    value={newFeature.name}
+                    onChange={(e) =>
+                      setNewFeature({ ...newFeature, name: e.target.value })
+                    }
+                    placeholder="Bluetooth"
                   />
-                  <Label htmlFor={feature} className="cursor-pointer">
-                    {feature}
-                  </Label>
                 </div>
-              ))}
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor="featureDescription">Mô Tả *</Label>
+                  <Input
+                    id="featureDescription"
+                    value={newFeature.description}
+                    onChange={(e) =>
+                      setNewFeature({
+                        ...newFeature,
+                        description: e.target.value,
+                      })
+                    }
+                    placeholder="Kết nối Bluetooth không dây"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="featureIcon">Icon *</Label>
+                  <Input
+                    id="featureIcon"
+                    value={newFeature.icon}
+                    onChange={(e) =>
+                      setNewFeature({ ...newFeature, icon: e.target.value })
+                    }
+                    placeholder="bluetooth"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleCreateFeature}
+                    className="bg-[#28a745] hover:bg-[#218838]"
+                  >
+                    <Save className="h-4 w-4 mr-1" />
+                    Lưu
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setShowFeatureForm(false);
+                      setNewFeature({ name: "", description: "", icon: "" });
+                    }}
+                  >
+                    <X className="h-4 w-4 mr-1" />
+                    Hủy
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Features List */}
+            {loadingFeatures ? (
+              <p className="text-muted-foreground">Đang tải tính năng...</p>
+            ) : features.length === 0 ? (
+              <p className="text-muted-foreground">Không có tính năng nào</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {features.map((feature) => (
+                  <div
+                    key={feature.id}
+                    className="flex items-center justify-between border rounded-lg p-3 hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="flex items-center space-x-2 flex-1">
+                      <Checkbox
+                        id={feature.id}
+                        checked={formData.featureIds.includes(feature.id)}
+                        onCheckedChange={() => toggleFeature(feature.id)}
+                      />
+                      <div className="flex-1">
+                        <Label
+                          htmlFor={feature.id}
+                          className="cursor-pointer font-medium"
+                        >
+                          {feature.name}
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          {feature.description}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleDeleteFeature(feature.id)}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -494,7 +733,9 @@ export function VehicleFormPage() {
                 value={termInput}
                 onChange={(e) => setTermInput(e.target.value)}
                 placeholder="Nhập điều khoản..."
-                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTerm())}
+                onKeyPress={(e) =>
+                  e.key === "Enter" && (e.preventDefault(), handleAddTerm())
+                }
               />
               <Button type="button" onClick={handleAddTerm}>
                 Thêm
@@ -543,7 +784,7 @@ export function VehicleFormPage() {
                       alt={`Vehicle ${index + 1}`}
                       className="w-full h-24 object-cover rounded-lg"
                       onError={(e) => {
-                        e.currentTarget.src = 'https://via.placeholder.com/150';
+                        e.currentTarget.src = "https://via.placeholder.com/150";
                       }}
                     />
                     <button
@@ -568,7 +809,7 @@ export function VehicleFormPage() {
           <CardContent>
             <Select
               value={formData.status}
-              onValueChange={(value: 'ACTIVE' | 'INACTIVE') =>
+              onValueChange={(value: "ACTIVE" | "INACTIVE") =>
                 setFormData({ ...formData, status: value })
               }
             >
@@ -585,12 +826,16 @@ export function VehicleFormPage() {
 
         {/* Submit */}
         <div className="flex justify-end gap-4">
-          <Button type="button" variant="outline" onClick={() => navigate('/vehicles')}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => navigate("/vehicles")}
+          >
             Hủy
           </Button>
           <Button type="submit" className="bg-[#007BFF] hover:bg-[#0056b3]">
             <Save className="h-4 w-4 mr-2" />
-            {isNew ? 'Tạo Phương Tiện' : 'Cập Nhật'}
+            {isNew ? "Tạo Phương Tiện" : "Cập Nhật"}
           </Button>
         </div>
       </form>
