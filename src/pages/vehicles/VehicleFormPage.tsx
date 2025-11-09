@@ -1,5 +1,5 @@
 import { ArrowLeft, Plus, Save, Trash2, Upload, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "../../components/ui/button";
@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "../../components/ui/select";
 import { Textarea } from "../../components/ui/textarea";
+import * as mediaService from "../../lib/services/media.service";
 import * as vehicleService from "../../lib/services/vehicle.service";
 import type { Brand, Model } from "../../lib/types/vehicle.types";
 
@@ -80,10 +81,14 @@ export function VehicleFormPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const isNew = !id || id === "new";
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState<VehicleFormData>(initialFormData);
   const [termInput, setTermInput] = useState("");
   const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingVehicle, setIsLoadingVehicle] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   // Brands, Models and Features
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -164,20 +169,93 @@ export function VehicleFormPage() {
   // Load vehicle data when editing
   useEffect(() => {
     if (!isNew && id) {
-      // TODO: Fetch vehicle data from API
-      // const vehicle = await vehicleService.getVehicle(id);
-      // setFormData(vehicle);
+      const fetchVehicleData = async () => {
+        try {
+          setIsLoadingVehicle(true);
+          const vehicleData = await vehicleService.getVehicle(id);
+          
+          // Map API response to form data
+          setFormData({
+            type: vehicleData.type,
+            name: vehicleData.name,
+            brandId: vehicleData.brandId,
+            modelId: vehicleData.modelId,
+            licensePlate: "", // licensePlate không trả về từ API khi get
+            seats: vehicleData.seats,
+            fuelType: vehicleData.fuelType,
+            transmission: vehicleData.transmission,
+            pricePerHour: vehicleData.pricePerHour,
+            pricePerDay: vehicleData.pricePerDay,
+            location: vehicleData.location,
+            city: vehicleData.city,
+            ward: vehicleData.ward,
+            latitude: vehicleData.latitude,
+            longitude: vehicleData.longitude,
+            description: vehicleData.description || "",
+            terms: vehicleData.terms || [],
+            status: vehicleData.status,
+            images: vehicleData.images || [],
+            featureIds: vehicleData.vehicleFeatures?.map((vf: any) => vf.feature.id) || [],
+          });
+          
+          // Set image URLs
+          setImageUrls(vehicleData.images || []);
+        } catch (error) {
+          console.error("Error fetching vehicle:", error);
+          toast.error("Không thể tải thông tin phương tiện");
+          navigate("/vehicles");
+        } finally {
+          setIsLoadingVehicle(false);
+        }
+      };
+      
+      fetchVehicleData();
     }
-  }, [isNew, id]);
+  }, [isNew, id, navigate]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate required fields
+    if (!formData.name || !formData.brandId || !formData.modelId) {
+      toast.error("Vui lòng điền đầy đủ thông tin bắt buộc");
+      return;
+    }
+
+    if (isNew && !formData.licensePlate) {
+      toast.error("Vui lòng nhập biển số xe");
+      return;
+    }
+
     const submitData = {
       ...formData,
       images: imageUrls,
     };
-    console.log(`${isNew ? "Create" : "Update"} vehicle data:`, submitData);
-    navigate("/vehicles");
+
+    try {
+      setIsSubmitting(true);
+      
+      if (isNew) {
+        // Create new vehicle
+        await vehicleService.createVehicle(submitData);
+        toast.success("Tạo phương tiện thành công!");
+      } else if (id) {
+        // Update existing vehicle
+        await vehicleService.updateVehicle(id, {
+          ...submitData,
+          id, // Add id for update request
+        });
+        toast.success("Cập nhật phương tiện thành công!");
+      }
+      
+      // Navigate back to list
+      navigate("/vehicles");
+    } catch (error) {
+      console.error("Error submitting vehicle:", error);
+      // Toast error đã được xử lý trong axios interceptor
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleAddTerm = () => {
@@ -257,9 +335,49 @@ export function VehicleFormPage() {
   };
 
   const handleAddImage = () => {
-    const url = prompt("Nhập URL hình ảnh:");
-    if (url && url.trim()) {
-      setImageUrls([...imageUrls, url.trim()]);
+    // Trigger file input click
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelect = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploadingImage(true);
+
+    try {
+      // Upload multiple files
+      const uploadPromises = Array.from(files).map(async (file) => {
+        // Validate file type
+        if (!file.type.startsWith("image/")) {
+          throw new Error(`${file.name} không phải là file ảnh`);
+        }
+
+        // Validate file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+          throw new Error(`${file.name} vượt quá 5MB`);
+        }
+
+        // Upload and get URL
+        const url = await mediaService.uploadImage(file);
+        return url;
+      });
+
+      const uploadedUrls = await Promise.all(uploadPromises);
+      setImageUrls([...imageUrls, ...uploadedUrls]);
+      toast.success(`Đã upload ${uploadedUrls.length} ảnh thành công`);
+
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    } catch (error: any) {
+      console.error("Error uploading images:", error);
+      toast.error(error.message || "Không thể upload ảnh");
+    } finally {
+      setIsUploadingImage(false);
     }
   };
 
@@ -269,16 +387,25 @@ export function VehicleFormPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <Button variant="ghost" onClick={() => navigate("/vehicles")}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <h2 className="text-2xl">
-            {isNew ? "Thêm Phương Tiện Mới" : "Chỉnh Sửa Phương Tiện"}
-          </h2>
+      {isLoadingVehicle ? (
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#007BFF] mx-auto mb-4"></div>
+            <p className="text-gray-600">Đang tải thông tin phương tiện...</p>
+          </div>
         </div>
-      </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <Button variant="ghost" onClick={() => navigate("/vehicles")}>
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <h2 className="text-2xl">
+                {isNew ? "Thêm Phương Tiện Mới" : "Chỉnh Sửa Phương Tiện"}
+              </h2>
+            </div>
+          </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Information */}
@@ -512,15 +639,24 @@ export function VehicleFormPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="city">Thành Phố *</Label>
-                <Input
-                  id="city"
+                <Select
                   value={formData.city}
-                  onChange={(e) =>
-                    setFormData({ ...formData, city: e.target.value })
+                  onValueChange={(value: string) =>
+                    setFormData({ ...formData, city: value })
                   }
-                  placeholder="TP.HCM"
-                  required
-                />
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Chọn thành phố" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Hà Nội">Hà Nội</SelectItem>
+                    <SelectItem value="Hồ Chí Minh">Hồ Chí Minh</SelectItem>
+                    <SelectItem value="Đà Nẵng">Đà Nẵng</SelectItem>
+                    <SelectItem value="Hội An">Hội An</SelectItem>
+                    <SelectItem value="Nha Trang">Nha Trang</SelectItem>
+                    <SelectItem value="Đà Lạt">Đà Lạt</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
@@ -770,9 +906,24 @@ export function VehicleFormPage() {
             <CardTitle>Hình Ảnh</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button type="button" onClick={handleAddImage} variant="outline">
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+
+            <Button
+              type="button"
+              onClick={handleAddImage}
+              variant="outline"
+              disabled={isUploadingImage}
+            >
               <Upload className="h-4 w-4 mr-2" />
-              Thêm URL Hình Ảnh
+              {isUploadingImage ? "Đang upload..." : "Upload Hình Ảnh"}
             </Button>
 
             {imageUrls.length > 0 && (
@@ -830,15 +981,31 @@ export function VehicleFormPage() {
             type="button"
             variant="outline"
             onClick={() => navigate("/vehicles")}
+            disabled={isSubmitting}
           >
             Hủy
           </Button>
-          <Button type="submit" className="bg-[#007BFF] hover:bg-[#0056b3]">
-            <Save className="h-4 w-4 mr-2" />
-            {isNew ? "Tạo Phương Tiện" : "Cập Nhật"}
+          <Button 
+            type="submit" 
+            className="bg-[#007BFF] hover:bg-[#0056b3]"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                {isNew ? "Đang tạo..." : "Đang cập nhật..."}
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                {isNew ? "Tạo Phương Tiện" : "Cập Nhật"}
+              </>
+            )}
           </Button>
         </div>
       </form>
+        </>
+      )}
     </div>
   );
 }

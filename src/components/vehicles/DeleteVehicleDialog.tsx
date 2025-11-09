@@ -1,5 +1,7 @@
 import { Trash } from 'lucide-react';
 import { useState } from 'react';
+import toast from 'react-hot-toast';
+import * as vehicleService from '../../lib/services/vehicle.service';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,13 +27,25 @@ export function DeleteVehicleDialog({
   onConfirm,
 }: DeleteVehicleDialogProps) {
   const [open, setOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  const handleDelete = () => {
-    console.log('Delete vehicle:', vehicleId);
-    if (onConfirm) {
-      onConfirm(vehicleId);
+  const handleDelete = async () => {
+    try {
+      setIsDeleting(true);
+      await vehicleService.deleteVehicle({ id: vehicleId });
+      toast.success('Xóa phương tiện thành công!');
+      setOpen(false);
+      
+      // Call onConfirm callback to refresh list
+      if (onConfirm) {
+        onConfirm(vehicleId);
+      }
+    } catch (error) {
+      console.error('Error deleting vehicle:', error);
+      // Toast error already handled in axios interceptor
+    } finally {
+      setIsDeleting(false);
     }
-    setOpen(false);
   };
 
   return (
@@ -53,12 +67,20 @@ export function DeleteVehicleDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Hủy</AlertDialogCancel>
+          <AlertDialogCancel disabled={isDeleting}>Hủy</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleDelete}
+            disabled={isDeleting}
             className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
           >
-            Xóa
+            {isDeleting ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Đang xóa...
+              </>
+            ) : (
+              'Xóa'
+            )}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -100,8 +100,14 @@ axiosInstance.interceptors.response.use(
     if (error.response) {
       const { message, statusCode } = error.response.data || {};
 
-      // Không hiển thị toast cho lỗi 401 (đã xử lý ở trên)
-      if (error.response.status !== 401) {
+      // Không hiển thị toast cho một số trường hợp:
+      // - 401: đã xử lý ở trên
+      // - 404 VehicleNotFound: để component xử lý (search không tìm thấy)
+      const isVehicleNotFound = 
+        error.response.status === 404 && 
+        message?.includes('VehicleNotFound');
+      
+      if (error.response.status !== 401 && !isVehicleNotFound) {
         if (message) {
           toast.error(message);
         } else {

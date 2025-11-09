@@ -38,10 +38,28 @@ import type { GetManyVehiclesResponse } from "../../lib/types/vehicle.types";
 
 const ITEMS_PER_PAGE = 15;
 
+// Debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
 export function VehiclesListPage() {
   const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery.trim(), 500); // Debounce 500ms + trim whitespace
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [transmissionFilter, setTransmissionFilter] = useState("all");
@@ -59,7 +77,17 @@ export function VehiclesListPage() {
   const [vehiclesData, setVehiclesData] =
     useState<GetManyVehiclesResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [cities, setCities] = useState<string[]>([]);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  
+  // Store all vehicles for client-side filtering
+  const [allVehicles, setAllVehicles] = useState<any[]>([]);
+
+  // Reset page to 1 when search query changes
+  useEffect(() => {
+    if (debouncedSearchQuery) {
+      setCurrentPage(1);
+    }
+  }, [debouncedSearchQuery]);
 
   // Fetch vehicles from API
   useEffect(() => {
@@ -74,8 +102,12 @@ export function VehiclesListPage() {
           order: sortOrder,
         };
 
-        // Add filters
-        if (searchQuery) params.name = searchQuery;
+        // Send search query to backend using 'name' parameter
+        if (debouncedSearchQuery) {
+          params.name = debouncedSearchQuery;
+        }
+        
+        // Send other filters to backend
         if (typeFilter !== "all") params.type = typeFilter.toUpperCase();
         if (statusFilter !== "all") params.status = statusFilter.toUpperCase();
         if (transmissionFilter !== "all")
@@ -89,6 +121,7 @@ export function VehiclesListPage() {
 
         // Kiểm tra nếu data là object rỗng hoặc không có vehicles
         if (!data || Object.keys(data).length === 0 || !data.vehicles) {
+          setAllVehicles([]);
           setVehiclesData({
             vehicles: [],
             page: currentPage,
@@ -96,22 +129,34 @@ export function VehiclesListPage() {
             totalItems: 0,
             totalPages: 0,
           });
-          setCities([]);
         } else {
-          setVehiclesData(data);
-
-          // Extract unique cities from all vehicles for filter dropdown
-          const uniqueCities = Array.from(
-            new Set(data.vehicles.map((v) => v.city).filter(Boolean))
-          );
-          setCities(uniqueCities);
+          // Use data directly from backend (no client-side filtering needed)
+          setAllVehicles(data.vehicles);
+          
+          // Update data with backend results
+          setVehiclesData({
+            vehicles: data.vehicles,
+            page: data.page,
+            limit: data.limit,
+            totalItems: data.totalItems,
+            totalPages: data.totalPages,
+          });
         }
       } catch (error: any) {
         console.error("Error fetching vehicles:", error);
-        toast.error(
-          error.response?.data?.message || "Không thể tải danh sách phương tiện"
-        );
+        
+        // Chỉ hiển thị toast error nếu không phải lỗi 404 (not found)
+        // 404 là bình thường khi search không có kết quả
+        const isNotFoundError = error.response?.status === 404;
+        
+        if (!isNotFoundError) {
+          toast.error(
+            error.response?.data?.message || "Không thể tải danh sách phương tiện"
+          );
+        }
+        
         // Set empty data on error
+        setAllVehicles([]);
         setVehiclesData({
           vehicles: [],
           page: 1,
@@ -127,7 +172,7 @@ export function VehiclesListPage() {
     fetchVehicles();
   }, [
     currentPage,
-    searchQuery,
+    debouncedSearchQuery,
     typeFilter,
     statusFilter,
     transmissionFilter,
@@ -136,6 +181,7 @@ export function VehiclesListPage() {
     cityFilter,
     sortBy,
     sortOrder,
+    refreshTrigger, // Add refresh trigger to dependencies
   ]);
 
   // Check if any advanced filters are active
@@ -167,6 +213,11 @@ export function VehiclesListPage() {
   const vehicles = vehiclesData?.vehicles || [];
   const totalPages = vehiclesData?.totalPages || 0;
   const totalItems = vehiclesData?.totalItems || 0;
+
+  // Handle delete success - refresh data
+  const handleDeleteSuccess = () => {
+    setRefreshTrigger((prev) => prev + 1);
+  };
 
   const getStatusColor = (status: string) => {
     const upperStatus = status.toUpperCase();
@@ -249,11 +300,11 @@ export function VehiclesListPage() {
       {/* Filters */}
       <div className="bg-white rounded-lg shadow p-4 space-y-4">
         {/* Basic Filters */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="relative lg:col-span-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
-              placeholder="Tìm kiếm theo tên xe hoặc vị trí..."
+              placeholder="Tìm kiếm theo tên xe..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
@@ -294,20 +345,10 @@ export function VehiclesListPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="createdAt">Ngày tạo</SelectItem>
-                <SelectItem value="name">Tên xe</SelectItem>
-                <SelectItem value="type">Loại xe</SelectItem>
+                <SelectItem value="updatedAt">Ngày cập nhập</SelectItem>
                 <SelectItem value="brandId">Thương hiệu</SelectItem>
                 <SelectItem value="modelId">Mẫu xe</SelectItem>
-                <SelectItem value="seats">Số chỗ ngồi</SelectItem>
-                <SelectItem value="fuelType">Nhiên liệu</SelectItem>
-                <SelectItem value="transmission">Hộp số</SelectItem>
-                <SelectItem value="pricePerDay">Giá thuê/ngày</SelectItem>
-                <SelectItem value="pricePerHour">Giá thuê/giờ</SelectItem>
-                <SelectItem value="city">Thành phố</SelectItem>
-                <SelectItem value="ward">Quận/Huyện</SelectItem>
-                <SelectItem value="status">Trạng thái</SelectItem>
                 <SelectItem value="averageRating">Đánh giá</SelectItem>
-                <SelectItem value="totalTrips">Số chuyến</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -433,11 +474,12 @@ export function VehiclesListPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tất cả</SelectItem>
-                  {cities.map((city) => (
-                    <SelectItem key={city} value={city || ""}>
-                      {city}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="Hà Nội">Hà Nội</SelectItem>
+                  <SelectItem value="Hồ Chí Minh">Hồ Chí Minh</SelectItem>
+                  <SelectItem value="Đà Nẵng">Đà Nẵng</SelectItem>
+                  <SelectItem value="Hội An">Hội An</SelectItem>
+                  <SelectItem value="Nha Trang">Nha Trang</SelectItem>
+                  <SelectItem value="Đà Lạt">Đà Lạt</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -600,7 +642,7 @@ export function VehiclesListPage() {
                         <DeleteVehicleDialog
                           vehicleId={vehicle.id}
                           vehicleName={vehicle.name}
-                          onConfirm={(id) => console.log("Delete vehicle:", id)}
+                          onConfirm={handleDeleteSuccess}
                         />
                       </div>
                     </TableCell>
