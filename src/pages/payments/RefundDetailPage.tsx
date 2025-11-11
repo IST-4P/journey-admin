@@ -1,14 +1,49 @@
 import { ArrowLeft, CheckCircle, XCircle } from 'lucide-react';
-import { Link, useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Separator } from '../../components/ui/separator';
-import { mockRefunds, RefundStatus } from '../../lib/mockData';
+import * as refundService from '../../lib/services/refund.service';
+import type { Refund, RefundStatus } from '../../lib/types/refund.types';
 
 export function RefundDetailPage() {
   const { id } = useParams();
-  const refund = mockRefunds.find((r) => r.id === id);
+  const navigate = useNavigate();
+  const [refund, setRefund] = useState<Refund | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    const loadRefund = async () => {
+      if (!id) return;
+
+      try {
+        setIsLoading(true);
+        const data = await refundService.getRefund(id);
+        setRefund(data);
+      } catch (error: any) {
+        console.error('Error loading refund:', error);
+        toast.error('Không thể tải thông tin hoàn tiền');
+        navigate('/refunds');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadRefund();
+  }, [id, navigate]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="text-lg">Đang tải...</div>
+        </div>
+      </div>
+    );
+  }
 
   if (!refund) {
     return (
@@ -55,6 +90,7 @@ export function RefundDetailPage() {
   };
 
   const totalDeductions = refund.penaltyAmount + refund.damageAmount + refund.overtimeAmount;
+  const finalAmount = refund.amount - totalDeductions;
 
   return (
     <div className="space-y-6">
@@ -76,7 +112,7 @@ export function RefundDetailPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Mã Yêu Cầu</p>
-                  <code className="text-sm bg-gray-100 px-2 py-1 rounded">{refund.id}</code>
+                  <code className="text-sm bg-gray-100 px-2 py-1 rounded break-all">{refund.id}</code>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Trạng Thái</p>
@@ -88,29 +124,22 @@ export function RefundDetailPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Mã Thanh Toán</p>
-                  <Link to={`/payments/${refund.paymentId}`}>
-                    <code className="text-sm bg-blue-50 text-blue-700 px-2 py-1 rounded hover:bg-blue-100 cursor-pointer">
-                      {refund.paymentCode}
-                    </code>
-                  </Link>
+                  <p className="text-sm text-gray-600 mb-1">Booking ID</p>
+                  <code className="text-sm bg-gray-100 px-2 py-1 rounded break-all">
+                    {refund.bookingId}
+                  </code>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Người Dùng</p>
-                  <p className="font-medium">{refund.userName}</p>
-                  <p className="text-xs text-gray-500">ID: {refund.userId}</p>
+                  <p className="text-sm text-gray-600 mb-1">User ID</p>
+                  <p className="text-xs text-gray-500 break-all">{refund.userId}</p>
                 </div>
               </div>
 
               <Separator />
 
               <div>
-                <p className="text-sm text-gray-600 mb-1">
-                  {refund.rentalId ? 'Mã Đơn Thuê' : 'Mã Booking'}
-                </p>
-                <code className="text-sm bg-gray-100 px-2 py-1 rounded">
-                  {refund.rentalId || refund.bookingId}
-                </code>
+                <p className="text-sm text-gray-600 mb-1">Số Tiền Gốc (Principal)</p>
+                <p className="font-medium">{formatCurrency(refund.principal)}</p>
               </div>
             </CardContent>
           </Card>
@@ -161,7 +190,7 @@ export function RefundDetailPage() {
               <div className="flex justify-between items-center p-4 bg-green-50 rounded-lg border-2 border-green-200">
                 <span className="text-lg font-bold">Số tiền thực nhận</span>
                 <span className="text-2xl font-bold text-green-700">
-                  {formatCurrency(refund.finalAmount)}
+                  {formatCurrency(finalAmount)}
                 </span>
               </div>
             </CardContent>
@@ -233,7 +262,7 @@ export function RefundDetailPage() {
                 <div className="flex justify-between">
                   <span className="font-medium">Tỷ lệ hoàn lại</span>
                   <span className="font-bold text-blue-600">
-                    {((refund.finalAmount / refund.amount) * 100).toFixed(1)}%
+                    {((finalAmount / refund.amount) * 100).toFixed(1)}%
                   </span>
                 </div>
               </div>

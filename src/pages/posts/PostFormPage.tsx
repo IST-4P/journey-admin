@@ -1,52 +1,69 @@
-import { ArrowLeft, Plus, Save, Upload, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ArrowLeft, Save, Upload, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import toast from 'react-hot-toast';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
-import { Checkbox } from '../../components/ui/checkbox';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../components/ui/select';
 import { Textarea } from '../../components/ui/textarea';
-import { mockPosts } from '../../lib/mockData';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import * as blogService from '../../lib/services/blog.service';
+import * as mediaService from '../../lib/services/media.service';
+import type { CreateBlogRequest, UpdateBlogRequest } from '../../lib/types/blog.types';
+
+const REGIONS = ['TP.HCM', 'Hà Nội', 'Đà Nẵng', 'Cần Thơ', 'Hải Phòng', 'Nha Trang'];
+
+// Hàm chuyển đổi text sang HTML
+const convertTextToHtml = (text: string): string => {
+  return text
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .map(line => `<p>${line}</p>`)
+    .join('\n');
+};
+
+// Hàm chuyển đổi HTML về text
+const convertHtmlToText = (html: string): string => {
+  // Tạo một div tạm để parse HTML
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = html;
+  
+  // Lấy text content và giữ nguyên line breaks
+  const text = tempDiv.innerHTML
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<p>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '') // Loại bỏ các thẻ HTML còn lại
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .trim();
+  
+  return text;
+};
 
 interface PostFormData {
   title: string;
-  slug: string;
-  author: string;
   content: string;
-  excerpt: string;
+  type: string;
   region: string;
-  category: 'news' | 'guide' | 'promotion' | 'announcement';
-  status: 'draft' | 'published' | 'archived';
-  publishDate: string;
-  featuredImage?: string;
-  tags: string[];
-  allowComments: boolean;
+  thumbnail: string;
+  tag: string;
+  summary: string;
 }
 
 const initialFormData: PostFormData = {
   title: '',
-  slug: '',
-  author: 'Admin 1',
   content: '',
-  excerpt: '',
-  region: 'TP.HCM',
-  category: 'news',
-  status: 'draft',
-  publishDate: new Date().toISOString().split('T')[0],
-  featuredImage: '',
-  tags: [],
-  allowComments: true,
+  type: '',
+  region: '',
+  thumbnail: '',
+  tag: '',
+  summary: '',
 };
-
-const regions = ['TP.HCM', 'Hà Nội', 'Đà Nẵng', 'Cần Thơ', 'Hải Phòng', 'Nha Trang', 'Toàn Quốc'];
 
 export function PostFormPage() {
   const { id } = useParams();
@@ -54,76 +71,158 @@ export function PostFormPage() {
   const isNew = !id || id === 'new';
   
   const [formData, setFormData] = useState<PostFormData>(initialFormData);
-  const [tagInput, setTagInput] = useState('');
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load post data when editing
+  // Load blog data when editing
   useEffect(() => {
-    if (!isNew && id) {
-      const post = mockPosts.find((p) => p.id === Number(id));
-      if (post) {
-        setFormData({
-          title: post.title,
-          slug: post.slug,
-          author: post.author,
-          content: post.content,
-          excerpt: post.excerpt,
-          region: post.region,
-          category: post.category,
-          status: post.status,
-          publishDate: post.publishDate,
-          featuredImage: post.featuredImage,
-          tags: post.tags,
-          allowComments: post.allowComments,
-        });
+    const loadBlog = async () => {
+      if (!isNew && id) {
+        try {
+          setIsLoading(true);
+          const blog = await blogService.getBlog(id);
+          setFormData({
+            title: blog.title,
+            content: convertHtmlToText(blog.content || ''), // Chuyển HTML về text
+            type: blog.type,
+            region: blog.region,
+            thumbnail: blog.thumbnail,
+            tag: blog.tag || '',
+            summary: blog.summary || '',
+          });
+        } catch (error) {
+          console.error('Error loading blog:', error);
+          toast.error('Không thể tải thông tin bài viết');
+          navigate('/posts');
+        } finally {
+          setIsLoading(false);
+        }
       }
-    }
-  }, [id, isNew]);
+    };
 
-  // Auto-generate slug from title
-  useEffect(() => {
-    if (isNew && formData.title) {
-      const slug = formData.title
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/đ/g, 'd')
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .trim();
-      setFormData({ ...formData, slug });
-    }
-  }, [formData.title, isNew]);
+    loadBlog();
+  }, [id, isNew, navigate]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log(`${isNew ? 'Create' : 'Update'} post data:`, formData);
-    navigate('/posts');
-  };
+    
+    // Validation
+    if (!formData.title.trim()) {
+      toast.error('Vui lòng nhập tiêu đề');
+      return;
+    }
+    if (!formData.content.trim()) {
+      toast.error('Vui lòng nhập nội dung');
+      return;
+    }
+    if (!formData.type.trim()) {
+      toast.error('Vui lòng nhập loại bài viết');
+      return;
+    }
+    if (!formData.region.trim()) {
+      toast.error('Vui lòng chọn khu vực');
+      return;
+    }
+    if (!formData.thumbnail.trim()) {
+      toast.error('Vui lòng upload hình ảnh đại diện');
+      return;
+    }
 
-  const handleAddTag = () => {
-    if (tagInput.trim() && !formData.tags.includes(tagInput.trim())) {
-      setFormData({
-        ...formData,
-        tags: [...formData.tags, tagInput.trim()],
-      });
-      setTagInput('');
+    setIsSubmitting(true);
+
+    try {
+      // Chuyển đổi nội dung text sang HTML
+      const htmlContent = convertTextToHtml(formData.content);
+      
+      if (isNew) {
+        // Create new blog
+        const createData: CreateBlogRequest = {
+          title: formData.title,
+          content: htmlContent,
+          type: formData.type,
+          region: formData.region,
+          thumbnail: formData.thumbnail,
+          tag: formData.tag || undefined,
+          summary: formData.summary || undefined,
+        };
+        await blogService.createBlog(createData);
+        toast.success('Tạo bài viết thành công');
+      } else {
+        // Update existing blog
+        const updateData: UpdateBlogRequest = {
+          title: formData.title,
+          content: htmlContent,
+          type: formData.type,
+          region: formData.region,
+          thumbnail: formData.thumbnail,
+          tag: formData.tag || undefined,
+          summary: formData.summary || undefined,
+        };
+        await blogService.updateBlog(id!, updateData);
+        toast.success('Cập nhật bài viết thành công');
+      }
+      navigate('/posts');
+    } catch (error: any) {
+      console.error('Error saving blog:', error);
+      toast.error(error.message || 'Không thể lưu bài viết');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleRemoveTag = (tag: string) => {
-    setFormData({
-      ...formData,
-      tags: formData.tags.filter((t) => t !== tag),
-    });
+  const handleFileSelect = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploadingImage(true);
+
+    try {
+      const file = files[0];
+
+      // Validate file type
+      if (!file.type.startsWith("image/")) {
+        throw new Error("File không phải là ảnh");
+      }
+
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        throw new Error("File vượt quá 5MB");
+      }
+
+      // Upload and get URL
+      const url = await mediaService.uploadImage(file);
+      setFormData({ ...formData, thumbnail: url });
+      toast.success("Đã upload ảnh thành công");
+
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    } catch (error: any) {
+      console.error("Error uploading image:", error);
+      toast.error(error.message || "Không thể upload ảnh");
+    } finally {
+      setIsUploadingImage(false);
+    }
   };
 
   const handleAddFeaturedImage = () => {
-    const url = prompt('Nhập URL hình ảnh đại diện:');
-    if (url && url.trim()) {
-      setFormData({ ...formData, featuredImage: url.trim() });
-    }
+    fileInputRef.current?.click();
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="text-lg">Đang tải...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -153,80 +252,36 @@ export function PostFormPage() {
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 placeholder="Nhập tiêu đề bài viết"
                 required
+                disabled={isSubmitting}
               />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="slug">Slug (URL)</Label>
-              <Input
-                id="slug"
-                value={formData.slug}
-                onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
-                placeholder="bai-viet-mau"
-                disabled={isNew}
-                className={isNew ? 'bg-gray-50' : ''}
-              />
-              <p className="text-xs text-gray-500">
-                {isNew ? 'Slug sẽ tự động tạo từ tiêu đề' : 'URL của bài viết'}
-              </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="author">Tác Giả *</Label>
+                <Label htmlFor="type">Loại Bài Viết *</Label>
                 <Input
-                  id="author"
-                  value={formData.author}
-                  onChange={(e) => setFormData({ ...formData, author: e.target.value })}
-                  placeholder="Admin 1"
+                  id="type"
+                  value={formData.type}
+                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                  placeholder="Ví dụ: ABC, DEF"
                   required
+                  disabled={isSubmitting}
                 />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="publishDate">Ngày Xuất Bản *</Label>
-                <Input
-                  id="publishDate"
-                  type="date"
-                  value={formData.publishDate}
-                  onChange={(e) => setFormData({ ...formData, publishDate: e.target.value })}
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="category">Danh Mục *</Label>
-                <Select
-                  value={formData.category}
-                  onValueChange={(value: PostFormData['category']) =>
-                    setFormData({ ...formData, category: value })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="news">Tin Tức</SelectItem>
-                    <SelectItem value="guide">Hướng Dẫn</SelectItem>
-                    <SelectItem value="promotion">Khuyến Mãi</SelectItem>
-                    <SelectItem value="announcement">Thông Báo</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="region">Khu Vực *</Label>
                 <Select
                   value={formData.region}
-                  onValueChange={(value) => setFormData({ ...formData, region: value })}
+                  onValueChange={(value: string) => setFormData({ ...formData, region: value })}
+                  disabled={isSubmitting}
+                  required
                 >
-                  <SelectTrigger>
-                    <SelectValue />
+                  <SelectTrigger id="region">
+                    <SelectValue placeholder="Chọn khu vực" />
                   </SelectTrigger>
                   <SelectContent>
-                    {regions.map((region) => (
+                    {REGIONS.map((region) => (
                       <SelectItem key={region} value={region}>
                         {region}
                       </SelectItem>
@@ -234,25 +289,17 @@ export function PostFormPage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="status">Trạng Thái *</Label>
-                <Select
-                  value={formData.status}
-                  onValueChange={(value: PostFormData['status']) =>
-                    setFormData({ ...formData, status: value })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="draft">Nháp</SelectItem>
-                    <SelectItem value="published">Đã Xuất Bản</SelectItem>
-                    <SelectItem value="archived">Lưu Trữ</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="tag">Tag</Label>
+              <Input
+                id="tag"
+                value={formData.tag}
+                onChange={(e) => setFormData({ ...formData, tag: e.target.value })}
+                placeholder="Ví dụ: ABC, XYZ"
+                disabled={isSubmitting}
+              />
             </div>
           </CardContent>
         </Card>
@@ -264,14 +311,14 @@ export function PostFormPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="excerpt">Tóm Tắt *</Label>
+              <Label htmlFor="summary">Tóm Tắt</Label>
               <Textarea
-                id="excerpt"
-                value={formData.excerpt}
-                onChange={(e) => setFormData({ ...formData, excerpt: e.target.value })}
+                id="summary"
+                value={formData.summary}
+                onChange={(e) => setFormData({ ...formData, summary: e.target.value })}
                 placeholder="Nhập tóm tắt ngắn gọn của bài viết"
                 rows={3}
-                required
+                disabled={isSubmitting}
               />
               <p className="text-xs text-gray-500">
                 Tóm tắt ngắn gọn sẽ hiển thị trong danh sách bài viết
@@ -284,10 +331,14 @@ export function PostFormPage() {
                 id="content"
                 value={formData.content}
                 onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                placeholder="Nhập nội dung chi tiết của bài viết"
+                placeholder="Nhập nội dung chi tiết của bài viết. Nội dung sẽ được tự động chuyển sang HTML khi lưu."
                 rows={15}
                 required
+                disabled={isSubmitting}
               />
+              <p className="text-xs text-gray-500">
+                Mỗi dòng sẽ được chuyển thành một đoạn văn HTML khi lưu
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -295,18 +346,35 @@ export function PostFormPage() {
         {/* Featured Image */}
         <Card>
           <CardHeader>
-            <CardTitle>Hình Ảnh Đại Diện</CardTitle>
+            <CardTitle>Hình Ảnh Đại Diện *</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Button type="button" onClick={handleAddFeaturedImage} variant="outline">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            
+            <Button 
+              type="button" 
+              onClick={handleAddFeaturedImage} 
+              variant="outline"
+              disabled={isUploadingImage || isSubmitting}
+            >
               <Upload className="h-4 w-4 mr-2" />
-              {formData.featuredImage ? 'Thay Đổi Hình Ảnh' : 'Thêm Hình Ảnh'}
+              {isUploadingImage 
+                ? 'Đang Upload...' 
+                : formData.thumbnail 
+                  ? 'Thay Đổi Hình Ảnh' 
+                  : 'Thêm Hình Ảnh'}
             </Button>
 
-            {formData.featuredImage && (
+            {formData.thumbnail && (
               <div className="relative inline-block">
                 <img
-                  src={formData.featuredImage}
+                  src={formData.thumbnail}
                   alt="Featured"
                   className="w-full max-w-md h-48 object-cover rounded-lg"
                   onError={(e) => {
@@ -315,8 +383,9 @@ export function PostFormPage() {
                 />
                 <button
                   type="button"
-                  onClick={() => setFormData({ ...formData, featuredImage: '' })}
+                  onClick={() => setFormData({ ...formData, thumbnail: '' })}
                   className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600"
+                  disabled={isSubmitting}
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -325,75 +394,27 @@ export function PostFormPage() {
           </CardContent>
         </Card>
 
-        {/* Tags */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Thẻ (Tags)</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex gap-2">
-              <Input
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                placeholder="Nhập thẻ..."
-                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
-              />
-              <Button type="button" onClick={handleAddTag}>
-                Thêm
-              </Button>
-            </div>
-
-            {formData.tags.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {formData.tags.map((tag, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center gap-2 bg-blue-50 text-blue-800 px-3 py-1 rounded-full"
-                  >
-                    <span>{tag}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveTag(tag)}
-                      className="hover:text-blue-900"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Cài Đặt</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="allowComments"
-                checked={formData.allowComments}
-                onCheckedChange={(checked) =>
-                  setFormData({ ...formData, allowComments: checked as boolean })
-                }
-              />
-              <Label htmlFor="allowComments" className="cursor-pointer">
-                Cho phép bình luận
-              </Label>
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Submit */}
         <div className="flex justify-end gap-4">
-          <Button type="button" variant="outline" onClick={() => navigate('/posts')}>
+          <Button 
+            type="button" 
+            variant="outline" 
+            onClick={() => navigate('/posts')}
+            disabled={isSubmitting}
+          >
             Hủy
           </Button>
-          <Button type="submit" className="bg-[#007BFF] hover:bg-[#0056b3]">
+          <Button 
+            type="submit" 
+            className="bg-[#007BFF] hover:bg-[#0056b3]"
+            disabled={isSubmitting || isUploadingImage}
+          >
             <Save className="h-4 w-4 mr-2" />
-            {isNew ? 'Tạo Bài Viết' : 'Cập Nhật'}
+            {isSubmitting 
+              ? 'Đang xử lý...' 
+              : isNew 
+                ? 'Tạo Bài Viết' 
+                : 'Cập Nhật'}
           </Button>
         </div>
       </form>

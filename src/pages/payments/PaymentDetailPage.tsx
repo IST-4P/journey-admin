@@ -1,14 +1,49 @@
 import { ArrowLeft, Download } from 'lucide-react';
-import { Link, useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Separator } from '../../components/ui/separator';
-import { mockPayments, PaymentStatus, PaymentType } from '../../lib/mockData';
+import * as paymentService from '../../lib/services/payment.service';
+import type { Payment, PaymentStatus, PaymentType } from '../../lib/types/payment.types';
 
 export function PaymentDetailPage() {
   const { id } = useParams();
-  const payment = mockPayments.find((p) => p.id === id);
+  const navigate = useNavigate();
+  const [payment, setPayment] = useState<Payment | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    const loadPayment = async () => {
+      if (!id) return;
+
+      try {
+        setIsLoading(true);
+        const data = await paymentService.getPayment(id);
+        setPayment(data);
+      } catch (error: any) {
+        console.error('Error loading payment:', error);
+        toast.error('Không thể tải thông tin thanh toán');
+        navigate('/payments');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadPayment();
+  }, [id, navigate]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="text-lg">Đang tải...</div>
+        </div>
+      </div>
+    );
+  }
 
   if (!payment) {
     return (
@@ -120,16 +155,15 @@ export function PaymentDetailPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Người Dùng</p>
-                  <p className="font-medium">{payment.userName}</p>
-                  <p className="text-xs text-gray-500">ID: {payment.userId}</p>
+                  <p className="text-sm text-gray-600 mb-1">User ID</p>
+                  <p className="text-xs text-gray-500 break-all">{payment.userId}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600 mb-1">
-                    {payment.type === 'VEHICLE' ? 'Mã Đơn Thuê' : 'Mã Booking'}
+                    {payment.type === 'VEHICLE' ? 'Booking ID' : 'Booking ID'}
                   </p>
-                  <code className="text-sm bg-gray-100 px-2 py-1 rounded">
-                    {payment.rentalId || payment.bookingId}
+                  <code className="text-sm bg-gray-100 px-2 py-1 rounded break-all">
+                    {payment.bookingId}
                   </code>
                 </div>
               </div>

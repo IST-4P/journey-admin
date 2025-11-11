@@ -1,19 +1,13 @@
 import { ChevronDown, ChevronUp, Edit, Eye, Filter, Plus, Search, X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
 import { Link, useNavigate } from 'react-router-dom';
 import { Pagination } from '../../components/common/Pagination';
 import { DeletePostDialog } from '../../components/posts/DeletePostDialog';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Label } from '../../components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import {
   Table,
   TableBody,
@@ -22,133 +16,109 @@ import {
   TableHeader,
   TableRow,
 } from '../../components/ui/table';
-import { mockPosts } from '../../lib/mockData';
+import { deleteBlog, getManyBlogs } from '../../lib/services/blog.service';
+import type { BlogListItem } from '../../lib/types/blog.types';
 
-const ITEMS_PER_PAGE = 15;
+const ITEMS_PER_PAGE = 10;
+const REGIONS = ['TP.HCM', 'Hà Nội', 'Đà Nẵng', 'Cần Thơ', 'Hải Phòng', 'Nha Trang'];
 
 export function PostsListPage() {
   const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [authorFilter, setAuthorFilter] = useState('all');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [regionFilter, setRegionFilter] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [sortBy, setSortBy] = useState<'title' | 'createdAt' | 'updatedAt'>('updatedAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  
+  // API data states
+  const [blogs, setBlogs] = useState<BlogListItem[]>([]);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Get unique authors from posts
-  const authors = Array.from(new Set(mockPosts.map((p) => p.author)));
+  // Fetch blogs from API
+  const fetchBlogs = async () => {
+    try {
+      setIsLoading(true);
+      const response = await getManyBlogs({
+        title: searchQuery || undefined,
+        tag: tagFilter || undefined,
+        type: typeFilter || undefined,
+        region: regionFilter || undefined,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+        sortBy,
+        sortOrder,
+        page: currentPage,
+        limit: ITEMS_PER_PAGE,
+      });
 
-  // Filter posts
-  const filteredPosts = mockPosts.filter((post) => {
-    const matchesSearch =
-      post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      post.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      post.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    const matchesCategory = categoryFilter === 'all' || post.category === categoryFilter;
-    const matchesStatus = statusFilter === 'all' || post.status === statusFilter;
-    const matchesAuthor = authorFilter === 'all' || post.author === authorFilter;
+      setBlogs(response.blogs);
+      setTotalPages(response.totalPages);
+      setTotalItems(response.totalItems);
+      setCurrentPage(response.page);
+    } catch (error) {
+      console.error('Error fetching blogs:', error);
+      toast.error('Không thể tải danh sách bài viết');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    const postDate = new Date(post.publishDate);
-    const matchesDateFrom = !dateFrom || postDate >= new Date(dateFrom);
-    const matchesDateTo = !dateTo || postDate <= new Date(dateTo);
+  // Fetch blogs when filters or page change
+  useEffect(() => {
+    fetchBlogs();
+  }, [currentPage, searchQuery, tagFilter, typeFilter, regionFilter, startDate, endDate, sortBy, sortOrder]);
 
-    return (
-      matchesSearch &&
-      matchesCategory &&
-      matchesStatus &&
-      matchesAuthor &&
-      matchesDateFrom &&
-      matchesDateTo
-    );
-  });
+  // Handle delete blog
+  const handleDeleteBlog = async (id: string) => {
+    try {
+      await deleteBlog({ id });
+      toast.success('Xóa bài viết thành công');
+      fetchBlogs(); // Refresh the list
+    } catch (error) {
+      console.error('Error deleting blog:', error);
+      toast.error('Không thể xóa bài viết');
+    }
+  };
 
-  // Check if any advanced filters are active
-  const hasActiveFilters =
-    authorFilter !== 'all' ||
-    dateFrom !== '' ||
-    dateTo !== '';
+  // Check if any filters are active
+  const hasActiveFilters = typeFilter !== '' || regionFilter !== '' || tagFilter !== '' || startDate !== '' || endDate !== '';
 
   // Reset all filters
   const resetFilters = () => {
     setSearchQuery('');
-    setCategoryFilter('all');
-    setStatusFilter('all');
-    setAuthorFilter('all');
-    setDateFrom('');
-    setDateTo('');
+    setTagFilter('');
+    setTypeFilter('');
+    setRegionFilter('');
+    setStartDate('');
+    setEndDate('');
+    setSortBy('updatedAt');
+    setSortOrder('desc');
     setCurrentPage(1);
   };
 
-  // Pagination
-  const totalPages = Math.ceil(filteredPosts.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedPosts = filteredPosts.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-
-  const getCategoryLabel = (category: string) => {
-    switch (category) {
-      case 'news':
-        return 'Tin Tức';
-      case 'guide':
-        return 'Hướng Dẫn';
-      case 'promotion':
-        return 'Khuyến Mãi';
-      case 'announcement':
-        return 'Thông Báo';
-      default:
-        return category;
-    }
-  };
-
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case 'news':
-        return 'bg-blue-100 text-blue-800';
-      case 'guide':
-        return 'bg-green-100 text-green-800';
-      case 'promotion':
-        return 'bg-purple-100 text-purple-800';
-      case 'announcement':
-        return 'bg-orange-100 text-orange-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'draft':
-        return 'Nháp';
-      case 'published':
-        return 'Đã Xuất Bản';
-      case 'archived':
-        return 'Lưu Trữ';
-      default:
-        return status;
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'draft':
-        return 'bg-gray-100 text-gray-800';
-      case 'published':
-        return 'bg-green-100 text-green-800';
-      case 'archived':
-        return 'bg-yellow-100 text-yellow-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
+  const getCategoryColor = (type: string) => {
+    // Generate color based on type string
+    const colors = [
+      'bg-blue-100 text-blue-800',
+      'bg-green-100 text-green-800',
+      'bg-purple-100 text-purple-800',
+      'bg-orange-100 text-orange-800',
+      'bg-pink-100 text-pink-800',
+      'bg-indigo-100 text-indigo-800',
+    ];
+    const hash = type.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return colors[hash % colors.length];
   };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('vi-VN');
-  };
-
-  const formatNumber = (num: number) => {
-    return new Intl.NumberFormat('vi-VN').format(num);
   };
 
   return (
@@ -171,36 +141,106 @@ export function PostsListPage() {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
-              placeholder="Tìm kiếm theo tiêu đề, nội dung hoặc thẻ..."
+              placeholder="Tìm kiếm theo tiêu đề..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
               className="pl-10"
             />
           </div>
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+          <Input
+            placeholder="Tìm theo tag..."
+            value={tagFilter}
+            onChange={(e) => {
+              setTagFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="w-full sm:w-[180px]"
+          />
+          <Input
+            placeholder="Loại bài viết..."
+            value={typeFilter}
+            onChange={(e) => {
+              setTypeFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="w-full sm:w-[180px]"
+          />
+          <Select
+            value={regionFilter}
+            onValueChange={(value: string) => {
+              setRegionFilter(value === 'all' ? '' : value);
+              setCurrentPage(1);
+            }}
+          >
             <SelectTrigger className="w-full sm:w-[180px]">
-              <SelectValue placeholder="Danh mục" />
+              <SelectValue placeholder="Khu vực..." />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Tất cả danh mục</SelectItem>
-              <SelectItem value="news">Tin Tức</SelectItem>
-              <SelectItem value="guide">Hướng Dẫn</SelectItem>
-              <SelectItem value="promotion">Khuyến Mãi</SelectItem>
-              <SelectItem value="announcement">Thông Báo</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <SelectValue placeholder="Trạng thái" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả trạng thái</SelectItem>
-              <SelectItem value="draft">Nháp</SelectItem>
-              <SelectItem value="published">Đã Xuất Bản</SelectItem>
-              <SelectItem value="archived">Lưu Trữ</SelectItem>
+              <SelectItem value="all">Tất cả khu vực</SelectItem>
+              {REGIONS.map((region) => (
+                <SelectItem key={region} value={region}>
+                  {region}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
+
+        {/* Advanced Filters */}
+        {showAdvancedFilters && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Từ ngày</label>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => {
+                  setStartDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Đến ngày</label>
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => {
+                  setEndDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Sắp xếp theo</label>
+              <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="title">Tiêu đề</SelectItem>
+                  <SelectItem value="createdAt">Ngày tạo</SelectItem>
+                  <SelectItem value="updatedAt">Ngày cập nhật</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Thứ tự</label>
+              <Select value={sortOrder} onValueChange={(value: any) => setSortOrder(value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="asc">Tăng dần</SelectItem>
+                  <SelectItem value="desc">Giảm dần</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
 
         {/* Advanced Filters Toggle */}
         <div className="flex items-center justify-between border-t pt-3">
@@ -218,11 +258,11 @@ export function PostsListPage() {
             )}
             {hasActiveFilters && (
               <Badge className="ml-2 bg-[#007BFF]">
-                {Object.values({ authorFilter, dateFrom, dateTo }).filter(v => v && v !== 'all').length}
+                {[typeFilter, regionFilter, tagFilter, startDate, endDate].filter(v => v !== '').length}
               </Badge>
             )}
           </Button>
-          {(hasActiveFilters || searchQuery || categoryFilter !== 'all' || statusFilter !== 'all') && (
+          {(hasActiveFilters || searchQuery) && (
             <Button variant="ghost" onClick={resetFilters} className="text-red-600 hover:text-red-700">
               <X className="h-4 w-4 mr-2" />
               Xóa Bộ Lọc
@@ -230,50 +270,11 @@ export function PostsListPage() {
           )}
         </div>
 
-        {/* Advanced Filters */}
-        {showAdvancedFilters && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3 border-t">
-            <div className="space-y-2">
-              <Label>Tác Giả</Label>
-              <Select value={authorFilter} onValueChange={setAuthorFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Chọn tác giả" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tất cả</SelectItem>
-                  {authors.map((author) => (
-                    <SelectItem key={author} value={author}>
-                      {author}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Từ Ngày</Label>
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Đến Ngày</Label>
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-              />
-            </div>
-          </div>
-        )}
-
         {/* Filter Summary */}
         <div className="flex items-center justify-between text-sm text-gray-600 pt-2 border-t">
           <span>
-            Hiển thị <strong>{filteredPosts.length}</strong> bài viết
+            Hiển thị <strong>{totalItems}</strong> bài viết
+            {isLoading && <span className="ml-2 text-gray-400">(Đang tải...)</span>}
           </span>
         </div>
       </div>
@@ -283,84 +284,76 @@ export function PostsListPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>ID</TableHead>
+              <TableHead>Thumbnail</TableHead>
               <TableHead>Tiêu Đề</TableHead>
-              <TableHead>Danh Mục</TableHead>
-              <TableHead>Tác Giả</TableHead>
-              <TableHead>Trạng Thái</TableHead>
-              <TableHead>Ngày Xuất Bản</TableHead>
-              <TableHead>Lượt Xem</TableHead>
+              <TableHead>Loại</TableHead>
+              <TableHead>Khu Vực</TableHead>
+              <TableHead>Ngày Tạo</TableHead>
+              <TableHead>Ngày Cập Nhật</TableHead>
               <TableHead className="text-right">Hành Động</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paginatedPosts.map((post, index) => (
-              <TableRow key={post.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                <TableCell>{post.id}</TableCell>
-                <TableCell>
-                  <div className="space-y-1">
-                    <div className="max-w-xs truncate">{post.title}</div>
-                    {post.excerpt && (
-                      <div className="text-xs text-gray-500 max-w-xs truncate">{post.excerpt}</div>
-                    )}
-                    {post.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {post.tags.slice(0, 2).map((tag, idx) => (
-                          <span
-                            key={idx}
-                            className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                        {post.tags.length > 2 && (
-                          <span className="text-xs text-gray-500">+{post.tags.length - 2}</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <Badge className={getCategoryColor(post.category)}>
-                    {getCategoryLabel(post.category)}
-                  </Badge>
-                </TableCell>
-                <TableCell>{post.author}</TableCell>
-                <TableCell>
-                  <Badge className={getStatusColor(post.status)}>
-                    {getStatusLabel(post.status)}
-                  </Badge>
-                </TableCell>
-                <TableCell>{formatDate(post.publishDate)}</TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1">
-                    <Eye className="h-3 w-3 text-gray-500" />
-                    <span className="text-sm">{formatNumber(post.viewCount)}</span>
-                  </div>
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex items-center justify-end space-x-2">
-                    <Link to={`/posts/${post.id}`}>
-                      <Button variant="ghost" size="sm">
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                    </Link>
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => navigate(`/posts/${post.id}/edit`)}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <DeletePostDialog
-                      postId={post.id}
-                      postTitle={post.title}
-                      onConfirm={(id) => console.log('Delete post:', id)}
-                    />
-                  </div>
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                  Đang tải...
                 </TableCell>
               </TableRow>
-            ))}
+            ) : blogs.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                  Không tìm thấy bài viết nào
+                </TableCell>
+              </TableRow>
+            ) : (
+              blogs.map((blog, index) => (
+                <TableRow key={blog.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
+                  <TableCell>
+                    <img
+                      src={blog.thumbnail}
+                      alt={blog.title}
+                      className="w-16 h-16 object-cover rounded"
+                      onError={(e) => {
+                        e.currentTarget.src = 'https://via.placeholder.com/64';
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <div className="max-w-xs truncate font-medium">{blog.title}</div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={getCategoryColor(blog.type)}>
+                      {blog.type}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{blog.region}</TableCell>
+                  <TableCell>{formatDate(blog.createdAt)}</TableCell>
+                  <TableCell>{formatDate(blog.updatedAt)}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end space-x-2">
+                      <Link to={`/posts/${blog.id}`}>
+                        <Button variant="ghost" size="sm">
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => navigate(`/posts/${blog.id}/edit`)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <DeletePostDialog
+                        postId={blog.id}
+                        postTitle={blog.title}
+                        onConfirm={handleDeleteBlog}
+                      />
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </div>

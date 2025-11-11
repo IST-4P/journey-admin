@@ -14,9 +14,9 @@ import {
 import { Button } from '../ui/button';
 
 interface DeletePostDialogProps {
-  postId: number;
+  postId: string;
   postTitle: string;
-  onConfirm?: (postId: number) => void;
+  onConfirm?: (postId: string) => void;
 }
 
 export function DeletePostDialog({

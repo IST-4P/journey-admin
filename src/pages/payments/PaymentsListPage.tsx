@@ -1,6 +1,7 @@
 import { Eye, Search, Download } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { Pagination } from '../../components/common/Pagination';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -14,30 +15,72 @@ import {
   TableHeader,
   TableRow,
 } from '../../components/ui/table';
-import { mockPayments, PaymentStatus, PaymentType } from '../../lib/mockData';
+import * as paymentService from '../../lib/services/payment.service';
+import type { Payment, PaymentStatus, PaymentType } from '../../lib/types/payment.types';
 
 const ITEMS_PER_PAGE = 10;
 
 export function PaymentsListPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<PaymentStatus | 'all'>('all');
   const [typeFilter, setTypeFilter] = useState<PaymentType | 'all'>('all');
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
 
-  // Filter payments
-  const filteredPayments = mockPayments.filter((payment) => {
-    const matchesSearch =
-      payment.paymentCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.userName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || payment.status === statusFilter;
-    const matchesType = typeFilter === 'all' || payment.type === typeFilter;
-    return matchesSearch && matchesStatus && matchesType;
-  });
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      setCurrentPage(1); // Reset to first page when search changes
+    }, 500); // Wait 500ms after user stops typing
 
-  // Pagination
-  const totalPages = Math.ceil(filteredPayments.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedPayments = filteredPayments.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Load payments from API
+  const loadPayments = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const params: any = {
+        page: currentPage,
+        limit: ITEMS_PER_PAGE,
+      };
+
+      if (statusFilter !== 'all') {
+        params.status = statusFilter;
+      }
+      if (typeFilter !== 'all') {
+        params.type = typeFilter;
+      }
+      if (debouncedSearchTerm.trim()) {
+        params.paymentCode = debouncedSearchTerm.trim();
+      }
+
+      console.log('Loading payments with params:', params); // Debug log
+      const response = await paymentService.getManyPayments(params);
+      console.log('Response:', response); // Debug log
+      
+      setPayments(response.payments);
+      setTotalPages(response.totalPages);
+      setTotalItems(response.totalItems);
+    } catch (error: any) {
+      console.error('Error loading payments:', error);
+      toast.error('Không thể tải danh sách thanh toán');
+      setPayments([]);
+      setTotalPages(1);
+      setTotalItems(0);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentPage, statusFilter, typeFilter, debouncedSearchTerm]);
+
+  useEffect(() => {
+    loadPayments();
+  }, [loadPayments]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('vi-VN', {
@@ -80,6 +123,16 @@ export function PaymentsListPage() {
     console.log('Exporting payments...');
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="text-lg">Đang tải...</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -96,12 +149,9 @@ export function PaymentsListPage() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
             <Input
-              placeholder="Tìm mã thanh toán, người dùng..."
+              placeholder="Tìm mã thanh toán..."
               value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentPage(1);
-              }}
+              onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
             />
           </div>
@@ -114,10 +164,10 @@ export function PaymentsListPage() {
             }}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Trạng thái" />
+              <SelectValue placeholder="Chọn trạng thái" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Tất cả trạng thái</SelectItem>
+              <SelectItem value="all">Tất Cả Trạng Thái</SelectItem>
               <SelectItem value="PAID">Đã Thanh Toán</SelectItem>
               <SelectItem value="PENDING">Chờ Thanh Toán</SelectItem>
               <SelectItem value="FAILED">Thất Bại</SelectItem>
@@ -132,10 +182,10 @@ export function PaymentsListPage() {
             }}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Loại" />
+              <SelectValue placeholder="Chọn loại" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Tất cả loại</SelectItem>
+              <SelectItem value="all">Tất Cả Loại</SelectItem>
               <SelectItem value="VEHICLE">Phương Tiện</SelectItem>
               <SelectItem value="DEVICE">Thiết Bị</SelectItem>
             </SelectContent>
@@ -143,7 +193,7 @@ export function PaymentsListPage() {
 
           <div className="flex items-center">
             <span className="text-sm text-gray-600">
-              Tìm thấy: <strong>{filteredPayments.length}</strong> thanh toán
+              Tìm thấy: <strong>{totalItems}</strong> thanh toán
             </span>
           </div>
         </div>
@@ -164,15 +214,17 @@ export function PaymentsListPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paginatedPayments.length > 0 ? (
-              paginatedPayments.map((payment) => (
+            {payments.length > 0 ? (
+              payments.map((payment: Payment) => (
                 <TableRow key={payment.id}>
                   <TableCell>
                     <code className="text-sm bg-gray-100 px-2 py-1 rounded">
                       {payment.paymentCode}
                     </code>
                   </TableCell>
-                  <TableCell>{payment.userName}</TableCell>
+                  <TableCell>
+                    <span className="text-xs text-gray-500">ID: {payment.userId}</span>
+                  </TableCell>
                   <TableCell>{getTypeBadge(payment.type)}</TableCell>
                   <TableCell className="font-medium">{formatCurrency(payment.amount)}</TableCell>
                   <TableCell>{getStatusBadge(payment.status)}</TableCell>
