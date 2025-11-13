@@ -2,6 +2,7 @@ import { Eye, Search, Download } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import * as XLSX from 'xlsx';
 import { Pagination } from '../../components/common/Pagination';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -118,9 +119,94 @@ export function PaymentsListPage() {
     return <Badge className={config.className}>{config.label}</Badge>;
   };
 
-  const handleExport = () => {
-    // Export to CSV logic
-    console.log('Exporting payments...');
+  const getStatusLabel = (status: PaymentStatus): string => {
+    const statusLabels = {
+      PAID: 'Đã Thanh Toán',
+      PENDING: 'Chờ Thanh Toán',
+      FAILED: 'Thất Bại',
+    };
+    return statusLabels[status];
+  };
+
+  const getTypeLabel = (type: PaymentType): string => {
+    const typeLabels = {
+      VEHICLE: 'Phương Tiện',
+      DEVICE: 'Thiết Bị',
+    };
+    return typeLabels[type];
+  };
+
+  const handleExport = async () => {
+    try {
+      toast.loading('Đang xuất dữ liệu...');
+      
+      // Fetch all payments (without pagination)
+      const params: any = {
+        page: 1,
+        limit: 1000, // Get large number to export all
+      };
+
+      if (statusFilter !== 'all') {
+        params.status = statusFilter;
+      }
+      if (typeFilter !== 'all') {
+        params.type = typeFilter;
+      }
+      if (debouncedSearchTerm.trim()) {
+        params.paymentCode = debouncedSearchTerm.trim();
+      }
+
+      const response = await paymentService.getManyPayments(params);
+      
+      // Prepare data for Excel
+      const excelData = response.payments.map((payment, index) => ({
+        'STT': index + 1,
+        'Mã Thanh Toán': payment.paymentCode,
+        'Số Thứ Tự': payment.sequenceNumber,
+        'User ID': payment.userId,
+        'Loại': getTypeLabel(payment.type),
+        'Booking ID': payment.bookingId,
+        'Số Tiền (VNĐ)': payment.amount,
+        'Trạng Thái': getStatusLabel(payment.status),
+        'Ngày Tạo': new Date(payment.createdAt).toLocaleString('vi-VN'),
+        'Cập Nhật': new Date(payment.updatedAt).toLocaleString('vi-VN'),
+      }));
+
+      // Create worksheet
+      const ws = XLSX.utils.json_to_sheet(excelData);
+      
+      // Set column widths
+      ws['!cols'] = [
+        { wch: 5 },  // STT
+        { wch: 22 }, // Mã Thanh Toán
+        { wch: 12 }, // Số Thứ Tự
+        { wch: 38 }, // User ID
+        { wch: 15 }, // Loại
+        { wch: 38 }, // Booking ID
+        { wch: 15 }, // Số Tiền
+        { wch: 18 }, // Trạng Thái
+        { wch: 20 }, // Ngày Tạo
+        { wch: 20 }, // Cập Nhật
+      ];
+
+      // Create workbook
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Thanh Toán');
+
+      // Generate filename with timestamp
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `DanhSachThanhToan_${timestamp}.xlsx`;
+
+      // Export file
+      XLSX.writeFile(wb, filename);
+
+      toast.dismiss();
+      toast.success(`Đã xuất ${response.payments.length} thanh toán thành công!`);
+    } catch (error) {
+      console.error('Error exporting payments:', error);
+      toast.dismiss();
+      toast.error('Không thể xuất file Excel');
+    }
   };
 
   if (isLoading) {

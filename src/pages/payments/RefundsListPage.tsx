@@ -2,6 +2,7 @@ import { Eye, Search, Download } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import * as XLSX from 'xlsx';
 import { Pagination } from '../../components/common/Pagination';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -105,8 +106,98 @@ export function RefundsListPage() {
     return <Badge className={config.className}>{config.label}</Badge>;
   };
 
-  const handleExport = () => {
-    console.log('Exporting refunds...');
+  const getStatusLabel = (status: RefundStatus): string => {
+    const statusLabels = {
+      COMPLETED: 'Đã Hoàn Tiền',
+      PENDING: 'Đang Xử Lý',
+      CANCELLED: 'Đã Hủy',
+    };
+    return statusLabels[status];
+  };
+
+  const handleExport = async () => {
+    try {
+      toast.loading('Đang xuất dữ liệu...');
+      
+      // Fetch all refunds (without pagination)
+      const params: any = {
+        page: 1,
+        limit: 1000, // Get large number to export all
+      };
+
+      if (statusFilter !== 'all') {
+        params.status = statusFilter;
+      }
+      if (debouncedSearchTerm.trim()) {
+        params.search = debouncedSearchTerm.trim();
+      }
+
+      const response = await refundService.getManyRefunds(params);
+      
+      // Prepare data for Excel
+      const excelData = response.refunds.map((refund, index) => {
+        const totalDeductions = refund.penaltyAmount + refund.damageAmount + refund.overtimeAmount;
+        const finalAmount = refund.amount - totalDeductions;
+        
+        return {
+          'STT': index + 1,
+          'ID Hoàn Tiền': refund.id,
+          'User ID': refund.userId,
+          'Booking ID': refund.bookingId,
+          'Số Tiền Gốc (VNĐ)': refund.principal,
+          'Số Tiền Hoàn (VNĐ)': refund.amount,
+          'Phí Phạt (VNĐ)': refund.penaltyAmount,
+          'Phí Thiệt Hại (VNĐ)': refund.damageAmount,
+          'Phí Quá Hạn (VNĐ)': refund.overtimeAmount,
+          'Tổng Phí Trừ (VNĐ)': totalDeductions,
+          'Thực Nhận (VNĐ)': finalAmount,
+          'Tỷ Lệ Hoàn (%)': ((finalAmount / refund.amount) * 100).toFixed(2),
+          'Trạng Thái': getStatusLabel(refund.status),
+          'Ngày Tạo': new Date(refund.createdAt).toLocaleString('vi-VN'),
+          'Cập Nhật': new Date(refund.updatedAt).toLocaleString('vi-VN'),
+        };
+      });
+
+      // Create worksheet
+      const ws = XLSX.utils.json_to_sheet(excelData);
+      
+      // Set column widths
+      ws['!cols'] = [
+        { wch: 5 },  // STT
+        { wch: 38 }, // ID Hoàn Tiền
+        { wch: 38 }, // User ID
+        { wch: 38 }, // Booking ID
+        { wch: 18 }, // Số Tiền Gốc
+        { wch: 18 }, // Số Tiền Hoàn
+        { wch: 15 }, // Phí Phạt
+        { wch: 18 }, // Phí Thiệt Hại
+        { wch: 16 }, // Phí Quá Hạn
+        { wch: 16 }, // Tổng Phí Trừ
+        { wch: 16 }, // Thực Nhận
+        { wch: 15 }, // Tỷ Lệ Hoàn
+        { wch: 18 }, // Trạng Thái
+        { wch: 20 }, // Ngày Tạo
+        { wch: 20 }, // Cập Nhật
+      ];
+
+      // Create workbook
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Hoàn Tiền');
+
+      // Generate filename with timestamp
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `DanhSachHoanTien_${timestamp}.xlsx`;
+
+      // Export file
+      XLSX.writeFile(wb, filename);
+
+      toast.dismiss();
+      toast.success(`Đã xuất ${response.refunds.length} yêu cầu hoàn tiền thành công!`);
+    } catch (error) {
+      console.error('Error exporting refunds:', error);
+      toast.dismiss();
+      toast.error('Không thể xuất file Excel');
+    }
   };
 
   // Calculate stats from current loaded refunds

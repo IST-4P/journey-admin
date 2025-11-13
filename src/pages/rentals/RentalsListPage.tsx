@@ -1,6 +1,7 @@
-import { Car, Eye, Filter, Search, X } from 'lucide-react';
-import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Eye, Filter, Search, X } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { Pagination } from '../../components/common/Pagination';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -21,65 +22,116 @@ import {
   TableHeader,
   TableRow,
 } from '../../components/ui/table';
-import { BookingStatus, mockRentals } from '../../lib/mockData';
+import * as bookingService from '../../lib/services/booking.service';
+import type { Booking, BookingStatus, BookingStatistics } from '../../lib/types/booking.types';
 
-const ITEMS_PER_PAGE = 15;
+const ITEMS_PER_PAGE = 10;
 
 export function RentalsListPage() {
-  const location = useLocation();
-  const isVehicleRentals = location.pathname.includes('vehicle-rentals');
-  const isEquipmentRentals = location.pathname.includes('equipment-rentals');
-
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<BookingStatus | 'all'>('all');
-  const [vehicleTypeFilter, setVehicleTypeFilter] = useState<'all' | 'car' | 'motorbike'>('all');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [startDateFrom, setStartDateFrom] = useState('');
   const [startDateTo, setStartDateTo] = useState('');
-
-  // Filter rentals - only show vehicle rentals, not equipment
-  const filteredRentals = mockRentals.filter((rental) => {
-    const matchesSearch =
-      rental.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      rental.vehicleName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      rental.id.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || rental.status === statusFilter;
-    const matchesVehicleType = vehicleTypeFilter === 'all' || rental.vehicleType === vehicleTypeFilter;
-
-    const rentalStartDate = new Date(rental.startTime);
-    const matchesStartDateFrom = !startDateFrom || rentalStartDate >= new Date(startDateFrom);
-    const matchesStartDateTo = !startDateTo || rentalStartDate <= new Date(startDateTo);
-
-    return (
-      matchesSearch &&
-      matchesStatus &&
-      matchesVehicleType &&
-      matchesStartDateFrom &&
-      matchesStartDateTo
-    );
+  
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const [stats, setStats] = useState<BookingStatistics>({
+    totalBookings: 0,
+    pendingBookings: 0,
+    ongoingBookings: 0,
+    completedBookings: 0,
+    cancelledBookings: 0,
   });
 
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+      setCurrentPage(1);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Load bookings from API
+  const loadBookings = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const params: any = {
+        page: currentPage,
+        limit: ITEMS_PER_PAGE,
+      };
+
+      if (statusFilter !== 'all') {
+        params.status = statusFilter;
+      }
+      if (startDateFrom) {
+        params.startTimeFrom = new Date(startDateFrom).toISOString();
+      }
+      if (startDateTo) {
+        params.startTimeTo = new Date(startDateTo).toISOString();
+      }
+
+      console.log('Fetching bookings with params:', params);
+      const response = await bookingService.getManyBookings(params);
+      console.log('Bookings response:', response);
+      
+      // Filter by search query on client side (if backend doesn't support it)
+      let filteredBookings = response.bookings;
+      if (debouncedSearchQuery.trim()) {
+        const query = debouncedSearchQuery.toLowerCase();
+        filteredBookings = filteredBookings.filter(
+          (booking) =>
+            booking.id.toLowerCase().includes(query) ||
+            booking.userId.toLowerCase().includes(query) ||
+            booking.vehicleId.toLowerCase().includes(query)
+        );
+      }
+      
+      setBookings(filteredBookings);
+      setTotalPages(response.totalPages);
+      setTotalItems(response.totalItems);
+    } catch (error: any) {
+      console.error('Error loading bookings:', error);
+      console.error('Error details:', error.response?.data);
+      toast.error('Không thể tải danh sách đơn thuê');
+      setBookings([]);
+      setTotalPages(1);
+      setTotalItems(0);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentPage, statusFilter, startDateFrom, startDateTo, debouncedSearchQuery]);
+
+  useEffect(() => {
+    loadBookings();
+    loadStats();
+  }, [loadBookings]);
+
+  const loadStats = async () => {
+    try {
+      const data = await bookingService.getBookingStats();
+      setStats(data);
+    } catch (error) {
+      console.error('Error loading stats:', error);
+    }
+  };
+
   // Check if any advanced filters are active
-  const hasActiveFilters =
-    vehicleTypeFilter !== 'all' ||
-    startDateFrom !== '' ||
-    startDateTo !== '';
+  const hasActiveFilters = startDateFrom !== '' || startDateTo !== '';
 
   // Reset all filters
   const resetFilters = () => {
     setSearchQuery('');
     setStatusFilter('all');
-    setVehicleTypeFilter('all');
     setStartDateFrom('');
     setStartDateTo('');
     setCurrentPage(1);
   };
-
-  // Pagination
-  const totalPages = Math.ceil(filteredRentals.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedRentals = filteredRentals.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
   // Format currency
   const formatCurrency = (value: number) => {
@@ -116,14 +168,17 @@ export function RentalsListPage() {
     return <Badge className={config.className}>{config.label}</Badge>;
   };
 
-  // Statistics
-  const stats = {
-    total: filteredRentals.length,
-    pending: filteredRentals.filter((r) => r.status === 'PENDING').length,
-    ongoing: filteredRentals.filter((r) => r.status === 'ONGOING').length,
-    completed: filteredRentals.filter((r) => r.status === 'COMPLETED').length,
-    cancelled: filteredRentals.filter((r) => r.status === 'CANCELLED').length,
-  };
+  // Statistics from API
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="text-lg">Đang tải...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -140,23 +195,23 @@ export function RentalsListPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-blue-500">
           <p className="text-sm text-gray-600">Tổng Đơn</p>
-          <p className="text-2xl font-bold text-gray-800">{stats.total}</p>
+          <p className="text-2xl font-bold text-gray-800">{stats.totalBookings}</p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-yellow-500">
           <p className="text-sm text-gray-600">Chờ Thanh Toán</p>
-          <p className="text-2xl font-bold text-yellow-600">{stats.pending}</p>
+          <p className="text-2xl font-bold text-yellow-600">{stats.pendingBookings}</p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-purple-500">
           <p className="text-sm text-gray-600">Đang Thuê</p>
-          <p className="text-2xl font-bold text-purple-600">{stats.ongoing}</p>
+          <p className="text-2xl font-bold text-purple-600">{stats.ongoingBookings}</p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-green-500">
           <p className="text-sm text-gray-600">Hoàn Thành</p>
-          <p className="text-2xl font-bold text-green-600">{stats.completed}</p>
+          <p className="text-2xl font-bold text-green-600">{stats.completedBookings}</p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-red-500">
           <p className="text-sm text-gray-600">Đã Hủy</p>
-          <p className="text-2xl font-bold text-red-600">{stats.cancelled}</p>
+          <p className="text-2xl font-bold text-red-600">{stats.cancelledBookings}</p>
         </div>
       </div>
 
@@ -218,27 +273,7 @@ export function RentalsListPage() {
 
         {/* Advanced Filters */}
         {showAdvancedFilters && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
-            <div>
-              <Label className="text-sm mb-2 block">Loại Xe</Label>
-              <Select
-                value={vehicleTypeFilter}
-                onValueChange={(value: 'all' | 'car' | 'motorbike') => {
-                  setVehicleTypeFilter(value);
-                  setCurrentPage(1);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tất cả loại xe</SelectItem>
-                  <SelectItem value="car">Ô Tô</SelectItem>
-                  <SelectItem value="motorbike">Xe Máy</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
             <div>
               <Label className="text-sm mb-2 block">Ngày Bắt Đầu Từ</Label>
               <Input
@@ -278,48 +313,47 @@ export function RentalsListPage() {
               <TableHead>Thời Lượng</TableHead>
               <TableHead>Tổng Tiền</TableHead>
               <TableHead>Trạng Thái</TableHead>
+              <TableHead>Ngày Tạo</TableHead>
               <TableHead className="text-right">Thao Tác</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paginatedRentals.length > 0 ? (
-              paginatedRentals.map((rental) => (
-                <TableRow key={rental.id}>
+            {bookings.length > 0 ? (
+              bookings.map((booking: Booking) => (
+                <TableRow key={booking.id}>
                   <TableCell>
-                    <code className="text-xs bg-gray-100 px-2 py-1 rounded">{rental.id}</code>
+                    <code className="text-xs bg-gray-100 px-2 py-1 rounded">
+                      {booking.id.substring(0, 8)}...
+                    </code>
                   </TableCell>
                   <TableCell>
                     <div>
-                      <p className="font-medium">{rental.userName}</p>
-                      <p className="text-xs text-gray-500">{rental.userId}</p>
+                      <p className="text-xs text-gray-500">ID: {booking.userId.substring(0, 8)}...</p>
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Car className={`h-4 w-4 ${rental.vehicleType === 'car' ? 'text-blue-600' : 'text-green-600'}`} />
-                      <div>
-                        <p className="font-medium">{rental.vehicleName}</p>
-                        <p className="text-xs text-gray-500">
-                          {rental.vehicleType === 'car' ? 'Ô tô' : 'Xe máy'}
-                        </p>
-                      </div>
+                    <div>
+                      <p className="text-xs text-gray-500">ID: {booking.vehicleId.substring(0, 8)}...</p>
                     </div>
                   </TableCell>
                   <TableCell className="text-sm">
                     <div>
-                      <p>{formatDateTime(rental.startTime)}</p>
-                      <p className="text-gray-500">{formatDateTime(rental.endTime)}</p>
+                      <p>{formatDateTime(booking.startTime)}</p>
+                      <p className="text-gray-500">{formatDateTime(booking.endTime)}</p>
                     </div>
                   </TableCell>
                   <TableCell className="text-sm">
-                    {rental.duration >= 24 
-                      ? `${Math.floor(rental.duration / 24)} ngày` 
-                      : `${rental.duration} giờ`}
+                    {booking.duration >= 24 
+                      ? `${Math.floor(booking.duration / 24)} ngày` 
+                      : `${booking.duration} giờ`}
                   </TableCell>
-                  <TableCell className="font-medium">{formatCurrency(rental.totalAmount)}</TableCell>
-                  <TableCell>{getStatusBadge(rental.status)}</TableCell>
+                  <TableCell className="font-medium">{formatCurrency(booking.totalAmount)}</TableCell>
+                  <TableCell>{getStatusBadge(booking.status)}</TableCell>
+                  <TableCell className="text-sm text-gray-600">
+                    {formatDateTime(booking.createdAt)}
+                  </TableCell>
                   <TableCell className="text-right">
-                    <Link to={`/vehicle-rentals/${rental.id}`}>
+                    <Link to={`/vehicle-rentals/${booking.id}`}>
                       <Button variant="ghost" size="sm">
                         <Eye className="h-4 w-4" />
                       </Button>
@@ -329,7 +363,7 @@ export function RentalsListPage() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-gray-500 py-8">
+                <TableCell colSpan={9} className="text-center text-gray-500 py-8">
                   Không tìm thấy đơn thuê nào
                 </TableCell>
               </TableRow>

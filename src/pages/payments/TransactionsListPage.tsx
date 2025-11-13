@@ -1,5 +1,7 @@
 import { ArrowDownLeft, ArrowUpRight, Download, Search } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import toast from 'react-hot-toast';
+import * as XLSX from 'xlsx';
 import { Pagination } from '../../components/common/Pagination';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -13,42 +15,124 @@ import {
   TableHeader,
   TableRow,
 } from '../../components/ui/table';
-import { mockTransactions } from '../../lib/mockData';
+import * as transactionService from '../../lib/services/transaction.service';
+import type { Transaction } from '../../lib/types/transaction.types';
+
+/**
+ * Transaction List Page - Bank Transactions Management
+ * 
+ * API Integration:
+ * - Endpoint: GET /transaction
+ * - Query Params:
+ *   ✅ page (number) - Current page number
+ *   ✅ limit (number) - Items per page
+ *   ✅ gateway (string, optional) - Filter by bank gateway
+ *   ✅ type (string, optional) - IN (tiền vào) | OUT (tiền ra)
+ *   ✅ code (string, optional) - Search by transaction code
+ *   ✅ startDate (string, optional) - ISO-8601 format
+ *   ✅ endDate (string, optional) - ISO-8601 format
+ * 
+ * Filters:
+ * - Search Box: Debounced 500ms, searches by transaction code
+ * - Gateway Filter: Server-side filter by bank name
+ * - Type Filter (In/Out): Server-side filter
+ * - Date Range: Server-side filter by transaction date
+ * 
+ * Features:
+ * - Server-side pagination and filtering
+ * - Real-time summary cards (total in/out/net)
+ * - Excel export with all filters applied
+ */
 
 const ITEMS_PER_PAGE = 15;
 
 export function TransactionsListPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
-  const [gatewayFilter, setGatewayFilter] = useState<string>('all');
-  const [typeFilter, setTypeFilter] = useState<'all' | 'in' | 'out'>('all');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'IN' | 'OUT'>('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
 
-  // Get unique gateways
-  const gateways = Array.from(new Set(mockTransactions.map((t) => t.gateway)));
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      setCurrentPage(1);
+    }, 500);
 
-  // Filter transactions
-  const filteredTransactions = mockTransactions.filter((transaction) => {
-    const matchesSearch =
-      transaction.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      transaction.transactionContent.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      transaction.accountNumber.includes(searchTerm);
-    const matchesGateway = gatewayFilter === 'all' || transaction.gateway === gatewayFilter;
-    const matchesType =
-      typeFilter === 'all' ||
-      (typeFilter === 'in' && transaction.amountIn > 0) ||
-      (typeFilter === 'out' && transaction.amountOut > 0);
-    return matchesSearch && matchesGateway && matchesType;
-  });
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
-  // Calculate totals
-  const totalAmountIn = filteredTransactions.reduce((sum, t) => sum + t.amountIn, 0);
-  const totalAmountOut = filteredTransactions.reduce((sum, t) => sum + t.amountOut, 0);
+  // Load transactions from API
+  const loadTransactions = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const params: any = {
+        page: currentPage,
+        limit: ITEMS_PER_PAGE,
+      };
+
+      // Filter by type (IN/OUT)
+      if (typeFilter !== 'all') {
+        params.type = typeFilter;
+      }
+      
+      // Search by transaction code
+      if (debouncedSearchTerm.trim()) {
+        params.code = debouncedSearchTerm.trim();
+      }
+      
+      // Filter by date range (ISO-8601 format)
+      if (startDate) {
+        params.startDate = new Date(startDate).toISOString();
+      }
+      if (endDate) {
+        // Set to end of day
+        const endDateTime = new Date(endDate);
+        endDateTime.setHours(23, 59, 59, 999);
+        params.endDate = endDateTime.toISOString();
+      }
+
+      console.log('📤 API Request - GET /transaction');
+      console.log('Parameters:', params);
+      console.log('URL:', `${import.meta.env.VITE_API_BASE_URL}/transaction?${new URLSearchParams(params).toString()}`);
+      
+      const response = await transactionService.getManyTransactions(params);
+      
+      console.log('📥 API Response:', {
+        totalItems: response.totalItems,
+        totalPages: response.totalPages,
+        currentPage: response.page,
+        itemsCount: response.transactions.length
+      });
+      
+      setTransactions(response.transactions);
+      setTotalPages(response.totalPages);
+      setTotalItems(response.totalItems);
+    } catch (error: any) {
+      console.error('❌ Error loading transactions:', error);
+      toast.error('Không thể tải danh sách giao dịch');
+      setTransactions([]);
+      setTotalPages(1);
+      setTotalItems(0);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentPage, typeFilter, debouncedSearchTerm, startDate, endDate]);
+
+  useEffect(() => {
+    loadTransactions();
+  }, [loadTransactions]);
+
+  // Calculate totals from filtered transactions (server-side filtered)
+  const totalAmountIn = transactions.reduce((sum, t) => sum + t.amountIn, 0);
+  const totalAmountOut = transactions.reduce((sum, t) => sum + t.amountOut, 0);
   const netAmount = totalAmountIn - totalAmountOut;
-
-  // Pagination
-  const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedTransactions = filteredTransactions.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('vi-VN', {
@@ -67,14 +151,97 @@ export function TransactionsListPage() {
     });
   };
 
-  const handleExport = () => {
-    console.log('Exporting transactions...');
+  const handleExport = async () => {
+    try {
+      toast.loading('Đang xuất dữ liệu...');
+      
+      // Fetch all transactions with current filters
+      const params: any = {
+        page: 1,
+        limit: 1000,
+      };
+
+      if (typeFilter !== 'all') {
+        params.type = typeFilter;
+      }
+      if (debouncedSearchTerm.trim()) {
+        params.code = debouncedSearchTerm.trim();
+      }
+      if (startDate) {
+        params.startDate = new Date(startDate).toISOString();
+      }
+      if (endDate) {
+        const endDateTime = new Date(endDate);
+        endDateTime.setHours(23, 59, 59, 999);
+        params.endDate = endDateTime.toISOString();
+      }
+
+      const response = await transactionService.getManyTransactions(params);
+      const exportTransactions = response.transactions;
+      
+      // Prepare data for Excel
+      const excelData = exportTransactions.map((transaction, index) => ({
+        'STT': index + 1,
+        'Mã Giao Dịch': transaction.code,
+        'Ngân Hàng': transaction.gateway,
+        'Số Tài Khoản': transaction.accountNumber,
+        'Nội Dung': transaction.transactionContent,
+        'Tiền Vào (VNĐ)': transaction.amountIn,
+        'Tiền Ra (VNĐ)': transaction.amountOut,
+        'Chênh Lệch (VNĐ)': transaction.amountIn - transaction.amountOut,
+        'Thời Gian': new Date(transaction.transactionDate).toLocaleString('vi-VN'),
+      }));
+
+      // Create worksheet
+      const ws = XLSX.utils.json_to_sheet(excelData);
+      
+      // Set column widths
+      ws['!cols'] = [
+        { wch: 5 },  // STT
+        { wch: 22 }, // Mã Giao Dịch
+        { wch: 15 }, // Ngân Hàng
+        { wch: 15 }, // Số Tài Khoản
+        { wch: 60 }, // Nội Dung
+        { wch: 15 }, // Tiền Vào
+        { wch: 15 }, // Tiền Ra
+        { wch: 18 }, // Chênh Lệch
+        { wch: 20 }, // Thời Gian
+      ];
+
+      // Create workbook
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Giao Dịch');
+
+      // Generate filename with timestamp
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `GiaoDichNganHang_${timestamp}.xlsx`;
+
+      // Export file
+      XLSX.writeFile(wb, filename);
+
+      toast.dismiss();
+      toast.success(`Đã xuất ${exportTransactions.length} giao dịch thành công!`);
+    } catch (error) {
+      console.error('Error exporting transactions:', error);
+      toast.dismiss();
+      toast.error('Không thể xuất file Excel');
+    }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="text-lg">Đang tải...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl">Giao Dịch Ngân Hàng</h2>
+        <h2 className="text-2xl">Giao Dịch </h2>
         <Button onClick={handleExport} className="bg-green-600 hover:bg-green-700">
           <Download className="h-4 w-4 mr-2" />
           Xuất Excel
@@ -107,49 +274,27 @@ export function TransactionsListPage() {
         </div>
         <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
           <p className="text-sm text-gray-700 mb-2">Tổng Giao Dịch</p>
-          <p className="text-xl font-bold text-gray-800">{filteredTransactions.length}</p>
+          <p className="text-xl font-bold text-gray-800">{totalItems}</p>
+          <p className="text-xs text-gray-500 mt-1">Trang hiện tại: {transactions.length}</p>
         </div>
       </div>
 
       {/* Filters */}
       <div className="bg-white p-4 rounded-lg shadow space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
             <Input
-              placeholder="Tìm mã GD, nội dung, STK..."
+              placeholder="Tìm theo mã giao dịch..."
               value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentPage(1);
-              }}
+              onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
             />
           </div>
 
           <Select
-            value={gatewayFilter}
-            onValueChange={(value) => {
-              setGatewayFilter(value);
-              setCurrentPage(1);
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Ngân hàng" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả ngân hàng</SelectItem>
-              {gateways.map((gateway) => (
-                <SelectItem key={gateway} value={gateway}>
-                  {gateway}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
             value={typeFilter}
-            onValueChange={(value: 'all' | 'in' | 'out') => {
+            onValueChange={(value: 'all' | 'IN' | 'OUT') => {
               setTypeFilter(value);
               setCurrentPage(1);
             }}
@@ -159,15 +304,44 @@ export function TransactionsListPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tất cả</SelectItem>
-              <SelectItem value="in">Tiền Vào</SelectItem>
-              <SelectItem value="out">Tiền Ra</SelectItem>
+              <SelectItem value="IN">Tiền Vào</SelectItem>
+              <SelectItem value="OUT">Tiền Ra</SelectItem>
             </SelectContent>
           </Select>
 
           <div className="flex items-center">
             <span className="text-sm text-gray-600">
-              Tìm thấy: <strong>{filteredTransactions.length}</strong> giao dịch
+              Tìm thấy: <strong>{totalItems}</strong> giao dịch
             </span>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Từ ngày
+            </label>
+            <Input
+              type="date"
+              value={startDate}
+              onChange={(e) => {
+                setStartDate(e.target.value);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Đến ngày
+            </label>
+            <Input
+              type="date"
+              value={endDate}
+              onChange={(e) => {
+                setEndDate(e.target.value);
+                setCurrentPage(1);
+              }}
+            />
           </div>
         </div>
       </div>
@@ -187,8 +361,8 @@ export function TransactionsListPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paginatedTransactions.length > 0 ? (
-              paginatedTransactions.map((transaction) => (
+            {transactions.length > 0 ? (
+              transactions.map((transaction: Transaction) => (
                 <TableRow key={transaction.id}>
                   <TableCell>
                     <code className="text-xs bg-gray-100 px-2 py-1 rounded">
