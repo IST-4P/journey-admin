@@ -13,6 +13,7 @@ import { EquipmentFormPage } from "./pages/equipment/EquipmentFormPage";
 import { EquipmentRentalDetailPage } from "./pages/equipment/EquipmentRentalDetailPage";
 import { EquipmentRentalsListPage } from "./pages/equipment/EquipmentRentalsListPage";
 import { EquipmentsListPage } from "./pages/equipment/EquipmentsListPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotificationsPage } from "./pages/notifications/NotificationsPage";
 import { PaymentDetailPage } from "./pages/payments/PaymentDetailPage";
@@ -64,7 +65,14 @@ export default function App() {
   }
 
   if (!isAuthenticated) {
-    return <LoginPage onLogin={handleLogin} />;
+    return (
+      <BrowserRouter>
+        <Routes>
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="*" element={<LoginPage onLogin={handleLogin} />} />
+        </Routes>
+      </BrowserRouter>
+    );
   }
 
   return (

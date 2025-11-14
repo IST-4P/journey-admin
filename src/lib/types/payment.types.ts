@@ -4,7 +4,7 @@
  */
 
 export type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED';
-export type PaymentType = 'DEVICE' | 'VEHICLE';
+export type PaymentType = 'DEVICE' | 'VEHICLE' | 'EXTENSION';
 
 /**
  * Payment interface from API

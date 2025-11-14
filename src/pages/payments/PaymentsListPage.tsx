@@ -111,9 +111,10 @@ export function PaymentsListPage() {
   };
 
   const getTypeBadge = (type: PaymentType) => {
-    const typeConfig = {
+    const typeConfig: Record<PaymentType, { label: string; className: string }> = {
       VEHICLE: { label: 'Phương Tiện', className: 'bg-blue-100 text-blue-800' },
       DEVICE: { label: 'Thiết Bị', className: 'bg-purple-100 text-purple-800' },
+      EXTENSION: { label: 'Gia Hạn', className: 'bg-green-100 text-green-800' },
     };
     const config = typeConfig[type];
     return <Badge className={config.className}>{config.label}</Badge>;
@@ -129,9 +130,10 @@ export function PaymentsListPage() {
   };
 
   const getTypeLabel = (type: PaymentType): string => {
-    const typeLabels = {
+    const typeLabels: Record<PaymentType, string> = {
       VEHICLE: 'Phương Tiện',
       DEVICE: 'Thiết Bị',
+      EXTENSION: 'Gia Hạn',
     };
     return typeLabels[type];
   };
@@ -274,6 +276,7 @@ export function PaymentsListPage() {
               <SelectItem value="all">Tất Cả Loại</SelectItem>
               <SelectItem value="VEHICLE">Phương Tiện</SelectItem>
               <SelectItem value="DEVICE">Thiết Bị</SelectItem>
+              <SelectItem value="EXTENSION">Gia Hạn</SelectItem>
             </SelectContent>
           </Select>
 

@@ -1,6 +1,7 @@
 import { Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import toast from "react-hot-toast";
+import { Link } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -92,9 +93,12 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             </Button>
 
             <div className="text-center">
-              <a href="#" className="text-sm text-[#007BFF] hover:underline">
+              <Link
+                to="/forgot-password"
+                className="text-sm text-[#007BFF] hover:underline"
+              >
                 Quên mật khẩu?
-              </a>
+              </Link>
             </div>
           </form>
         </div>
