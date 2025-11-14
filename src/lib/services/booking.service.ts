@@ -83,22 +83,28 @@ export async function getBookingHistory(bookingId: string) {
  * Get extensions for a booking
  */
 export async function getExtensionsByBookingId(bookingId: string) {
-  const response = await axios.get(`/extension/${bookingId}`);
-  return response as any;
+  const response: any = await axios.get(`/extension`, {
+    params: { bookingId }
+  });
+  console.log('Extensions response:', response);
+  return response?.extensions || [];
 }
 
 /**
  * Approve an extension
  */
 export async function approveExtension(extensionId: string) {
-  const response = await axios.post(`/extension/approve/${extensionId}`);
-  return response as any;
+  const response: any = await axios.put(`/extension/approve`, { id: extensionId });
+  return response;
 }
 
 /**
  * Reject an extension
  */
 export async function rejectExtension(extensionId: string, reason: string) {
-  const response = await axios.post(`/extension/reject/${extensionId}`, { reason });
-  return response as any;
+  const response: any = await axios.put(`/extension/reject`, { 
+    id: extensionId, 
+    rejectionReason: reason 
+  });
+  return response;
 }

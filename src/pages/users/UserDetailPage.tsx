@@ -1,4 +1,4 @@
-import { ArrowLeft, X } from "lucide-react";
+import { ArrowLeft, Check, Edit2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useNavigate, useParams } from "react-router-dom";
@@ -12,12 +12,20 @@ import {
 import { Checkbox } from "../../components/ui/checkbox";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../components/ui/select";
 import { Slider } from "../../components/ui/slider";
 import { Textarea } from "../../components/ui/textarea";
 import { userService } from "../../lib/services/user.service";
 import type {
   BankAccount,
   DriverLicense,
+  Gender,
   Profile,
 } from "../../lib/types/user.types";
 
@@ -27,11 +35,20 @@ export function UserDetailPage() {
   const isNew = id === "new";
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [driverLicense, setDriverLicense] = useState<DriverLicense | null>(
     null
   );
   const [bankAccount, setBankAccount] = useState<BankAccount | null>(null);
+
+  const [editFormData, setEditFormData] = useState({
+    fullName: "",
+    phone: "",
+    bio: "",
+    gender: "OTHER" as Gender,
+    avatarUrl: "",
+  });
 
   const [formData, setFormData] = useState({
     licenseVerified: false,
@@ -43,6 +60,18 @@ export function UserDetailPage() {
       fetchUserData();
     }
   }, [id, isNew]);
+
+  useEffect(() => {
+    if (profile) {
+      setEditFormData({
+        fullName: profile.fullName,
+        phone: profile.phone,
+        bio: profile.bio,
+        gender: profile.gender,
+        avatarUrl: profile.avatarUrl,
+      });
+    }
+  }, [profile]);
 
   const fetchUserData = async () => {
     if (!id) return;
@@ -94,6 +123,41 @@ export function UserDetailPage() {
     }
   };
 
+  const handleUpdateProfile = async () => {
+    if (!id) return;
+
+    try {
+      await userService.updateProfile({
+        userId: id,
+        fullName: editFormData.fullName,
+        phone: editFormData.phone,
+        bio: editFormData.bio,
+        gender: editFormData.gender,
+        avatarUrl: editFormData.avatarUrl,
+      });
+
+      toast.success("Cập nhật thông tin thành công");
+      setIsEditing(false);
+      fetchUserData();
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      toast.error("Cập nhật thông tin thất bại");
+    }
+  };
+
+  const handleCancelEdit = () => {
+    if (profile) {
+      setEditFormData({
+        fullName: profile.fullName,
+        phone: profile.phone,
+        bio: profile.bio,
+        gender: profile.gender,
+        avatarUrl: profile.avatarUrl,
+      });
+    }
+    setIsEditing(false);
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -128,6 +192,37 @@ export function UserDetailPage() {
             {isNew ? "Tạo Người Dùng Mới" : "Chi Tiết Người Dùng"}
           </h2>
         </div>
+        {!isNew && (
+          <div className="flex space-x-2">
+            {isEditing ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleCancelEdit}
+                  className="flex items-center"
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Hủy
+                </Button>
+                <Button
+                  onClick={handleUpdateProfile}
+                  className="bg-[#007BFF] hover:bg-[#0056b3] flex items-center"
+                >
+                  <Check className="h-4 w-4 mr-1" />
+                  Lưu
+                </Button>
+              </>
+            ) : (
+              <Button
+                onClick={() => setIsEditing(true)}
+                className="bg-[#007BFF] hover:bg-[#0056b3] flex items-center"
+              >
+                <Edit2 className="h-4 w-4 mr-1" />
+                Chỉnh Sửa
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -161,9 +256,12 @@ export function UserDetailPage() {
                 <Label htmlFor="name">Họ Tên</Label>
                 <Input
                   id="name"
-                  value={profile?.fullName || ""}
-                  disabled
-                  className="mt-1 bg-gray-50"
+                  value={isEditing ? editFormData.fullName : profile?.fullName || ""}
+                  onChange={(e) =>
+                    setEditFormData({ ...editFormData, fullName: e.target.value })
+                  }
+                  disabled={!isEditing}
+                  className={`mt-1 ${!isEditing ? "bg-gray-50" : ""}`}
                 />
               </div>
               <div>
@@ -183,9 +281,12 @@ export function UserDetailPage() {
                 <Label htmlFor="phone">Số Điện Thoại</Label>
                 <Input
                   id="phone"
-                  value={profile?.phone || ""}
-                  disabled
-                  className="mt-1 bg-gray-50"
+                  value={isEditing ? editFormData.phone : profile?.phone || ""}
+                  onChange={(e) =>
+                    setEditFormData({ ...editFormData, phone: e.target.value })
+                  }
+                  disabled={!isEditing}
+                  className={`mt-1 ${!isEditing ? "bg-gray-50" : ""}`}
                 />
               </div>
               <div>
@@ -202,12 +303,36 @@ export function UserDetailPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="gender">Giới Tính</Label>
-                <Input
-                  id="gender"
-                  value={profile?.gender || ""}
-                  disabled
-                  className="mt-1 bg-gray-50"
-                />
+                {isEditing ? (
+                  <Select
+                    value={editFormData.gender}
+                    onValueChange={(value: Gender) =>
+                      setEditFormData({ ...editFormData, gender: value })
+                    }
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Chọn giới tính" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="MALE">Nam</SelectItem>
+                      <SelectItem value="FEMALE">Nữ</SelectItem>
+                      <SelectItem value="OTHER">Khác</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    id="gender"
+                    value={
+                      profile?.gender === "MALE"
+                        ? "Nam"
+                        : profile?.gender === "FEMALE"
+                        ? "Nữ"
+                        : "Khác"
+                    }
+                    disabled
+                    className="mt-1 bg-gray-50"
+                  />
+                )}
               </div>
               <div>
                 <Label htmlFor="birthDate">Ngày Sinh</Label>
@@ -224,18 +349,19 @@ export function UserDetailPage() {
               </div>
             </div>
 
-            {profile?.bio && (
-              <div>
-                <Label htmlFor="bio">Tiểu Sử</Label>
-                <Textarea
-                  id="bio"
-                  value={profile.bio}
-                  disabled
-                  className="mt-1 bg-gray-50"
-                  rows={3}
-                />
-              </div>
-            )}
+            <div>
+              <Label htmlFor="bio">Tiểu Sử</Label>
+              <Textarea
+                id="bio"
+                value={isEditing ? editFormData.bio : profile?.bio || ""}
+                onChange={(e) =>
+                  setEditFormData({ ...editFormData, bio: e.target.value })
+                }
+                disabled={!isEditing}
+                className={`mt-1 ${!isEditing ? "bg-gray-50" : ""}`}
+                rows={3}
+              />
+            </div>
 
             <div>
               <Label>Điểm Tín Nhiệm: {profile?.creditScore || 0}</Label>

@@ -18,6 +18,8 @@ export interface Profile {
   birthDate?: Date | string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
+  driverLicense?: DriverLicense | null;
+  bankAccount?: BankAccount | null;
 }
 
 // Get All Profiles

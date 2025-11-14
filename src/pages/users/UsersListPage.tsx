@@ -1,4 +1,4 @@
-import { Edit, Eye, Search, Trash, UserPlus } from "lucide-react";
+import { Edit, Search, UserPlus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Pagination } from "../../components/common/Pagination";
@@ -148,6 +148,8 @@ export function UsersListPage() {
                 <TableHead>Số Điện Thoại</TableHead>
                 <TableHead>Vai Trò</TableHead>
                 <TableHead>Điểm Tín Nhiệm</TableHead>
+                <TableHead>GPLX</TableHead>
+                <TableHead>TK Ngân Hàng</TableHead>
                 <TableHead>Ngày Đăng Ký</TableHead>
                 <TableHead className="text-right">Hành Động</TableHead>
               </TableRow>
@@ -167,27 +169,42 @@ export function UsersListPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>{user.creditScore}</TableCell>
+                  <TableCell>
+                    {user.driverLicense ? (
+                      <Badge
+                        className={
+                          user.driverLicense.isVerified
+                            ? "bg-green-100 text-green-800"
+                            : "bg-yellow-100 text-yellow-800"
+                        }
+                      >
+                        {user.driverLicense.isVerified
+                          ? "Đã xác minh"
+                          : "Chưa xác minh"}
+                      </Badge>
+                    ) : (
+                      <span className="text-gray-400">Chưa có</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {user.bankAccount ? (
+                      <Badge className="bg-blue-100 text-blue-800">
+                        {user.bankAccount.bankCode}
+                      </Badge>
+                    ) : (
+                      <span className="text-gray-400">Chưa có</span>
+                    )}
+                  </TableCell>
                   <TableCell>{formatDate(user.createdAt)}</TableCell>
                   <TableCell className="text-right">
-                    <div className="flex items-center justify-end space-x-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => navigate(`/users/${user.id}`)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => navigate(`/users/${user.id}/edit`)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm">
-                        <Trash className="h-4 w-4 text-red-600" />
-                      </Button>
-                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => navigate(`/users/${user.id}`)}
+                      title="Xem/Chỉnh sửa"
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
