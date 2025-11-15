@@ -49,6 +49,16 @@ export const MarkAsReadRequestSchema = z.object({
     .min(1, 'At least one notification ID is required'),
 });
 
+export const BroadcastNotificationRequestSchema = z.object({
+  title: z.string().min(1, 'Title is required'),
+  content: z.string().min(1, 'Content is required'),
+  type: z.string().default('WELCOME'),
+});
+
+export const BroadcastNotificationResponseSchema = z.object({
+  totalCreated: z.number(),
+});
+
 export type GetManyNotificationsRequest = z.infer<
   typeof GetManyNotificationsRequestSchema
 >;
@@ -68,3 +78,9 @@ export type DeleteNotificationRequest = z.infer<
   typeof DeleteNotificationRequestSchema
 >;
 export type MarkAsReadRequest = z.infer<typeof MarkAsReadRequestSchema>;
+export type BroadcastNotificationRequest = z.infer<
+  typeof BroadcastNotificationRequestSchema
+>;
+export type BroadcastNotificationResponse = z.infer<
+  typeof BroadcastNotificationResponseSchema
+>;

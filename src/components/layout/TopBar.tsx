@@ -1,4 +1,4 @@
-import { Bell, LogOut, Menu } from "lucide-react";
+import { LogOut, Menu } from "lucide-react";
 import toast from "react-hot-toast";
 import { Link } from "react-router-dom";
 import { authService } from "../../lib/services/auth.service";
@@ -50,12 +50,6 @@ export function TopBar({ onLogout, onToggleSidebar }: TopBarProps) {
 
           {/* Right side */}
           <div className="flex items-center space-x-4">
-            {/* Notifications */}
-            <button className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors">
-              <Bell className="h-5 w-5" />
-              <span className="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full"></span>
-            </button>
-
             {/* User Menu */}
             <DropdownMenu>
               <DropdownMenuTrigger className="flex items-center space-x-2 focus:outline-none">
