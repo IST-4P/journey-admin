@@ -1,13 +1,11 @@
 import {
   Send,
-  Trash,
   Search,
-  Paperclip,
   MoreVertical,
   Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { io, Socket } from 'socket.io-client';
 import { Pagination } from '../../components/common/Pagination';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
@@ -20,79 +18,84 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '../../components/ui/dropdown-menu';
-import { chatService } from '../../lib/services/chat.service';
-import { Conversation, ChatMessage } from '../../lib/types/chat';
+import { complaintService } from '../../lib/services/complaint.service';
+import { Complaint, ComplaintMessage } from '../../lib/types/complaint';
+import { connectComplaintSocket, WSClient } from '../../lib/utils/ws-client';
 import { toast } from 'sonner';
 
-const CONVERSATIONS_PER_PAGE = 15;
+const COMPLAINTS_PER_PAGE = 15;
 const MESSAGES_PER_PAGE = 20;
 
-// Extended Conversation type for UI state
-interface ConversationWithState extends Conversation {
-  lastMessage?: string;
-  lastMessageDate?: string;
-  unread?: number;
+// Extended Complaint type for UI state
+interface ComplaintWithState extends Complaint {
+  userName?: string;
+  userAvatar?: string;
 }
 
-export function ChatPage() {
-  // Conversations state
-  const [conversations, setConversations] = useState<ConversationWithState[]>([]);
-  const [conversationsPage, setConversationsPage] = useState(1);
-  const [conversationsTotalPages, setConversationsTotalPages] = useState(1);
+export function ComplaintPage() {
+  // Complaints state
+  const [complaints, setComplaints] = useState<ComplaintWithState[]>([]);
+  const [complaintsPage, setComplaintsPage] = useState(1);
+  const [complaintsTotalPages, setComplaintsTotalPages] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isLoadingConversations, setIsLoadingConversations] = useState(false);
+  const [isLoadingComplaints, setIsLoadingComplaints] = useState(false);
 
-  // Chat state
-  const [selectedConversation, setSelectedConversation] = useState<ConversationWithState | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Complaint messages state
+  const [selectedComplaint, setSelectedComplaint] = useState<ComplaintWithState | null>(null);
+  const [messages, setMessages] = useState<ComplaintMessage[]>([]);
   const [messagesPage, setMessagesPage] = useState(1);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false);
   const [messageInput, setMessageInput] = useState('');
 
-  // WebSocket - Simplified like test-chat.html
-  const [socket, setSocket] = useState<Socket | null>(null);
-  const [isSocketConnected, setIsSocketConnected] = useState(false);
+  // WebSocket
+  const [complaintSocket, setComplaintSocket] = useState<WSClient | null>(null);
 
   // Refs
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const isFetchingMessagesRef = useRef(false);
   const shouldStickToBottomRef = useRef(true);
 
-  // Load conversations
-  const loadConversations = useCallback(async (page: number, search: string = '') => {
-    setIsLoadingConversations(true);
+  // Load complaints
+  const loadComplaints = useCallback(async (page: number, search: string = '') => {
+    setIsLoadingComplaints(true);
     try {
-      const response = await chatService.getManyConversations({
+      const response = await complaintService.getManyComplaints({
         page,
-        limit: CONVERSATIONS_PER_PAGE,
+        limit: COMPLAINTS_PER_PAGE,
       });
 
-      const conversations = response.conversations || [];
+      console.log('[ComplaintPage] Raw response:', response);
+
+      const complaints = response.complaints || [];
       const totalPages = response.totalPages || 1;
 
-      let filteredConversations = conversations as ConversationWithState[];
+      console.log('[ComplaintPage] Complaints array:', complaints);
+
+      // Filter by search if needed
+      let filteredComplaints = complaints as ComplaintWithState[];
       
       if (search) {
-        filteredConversations = filteredConversations.filter((conv) =>
-          conv.fullName.toLowerCase().includes(search.toLowerCase())
+        filteredComplaints = filteredComplaints.filter((complaint) =>
+          complaint.title.toLowerCase().includes(search.toLowerCase())
         );
       }
 
-      setConversations(filteredConversations);
-      setConversationsTotalPages(totalPages);
+      setComplaints(filteredComplaints);
+      setComplaintsTotalPages(totalPages);
+      console.log('[ComplaintPage] Loaded complaints:', filteredComplaints);
     } catch (error) {
-      console.error('Failed to load conversations:', error);
-      toast.error('Không thể tải danh sách cuộc trò chuyện');
+      console.error('Failed to load complaints:', error);
+      toast.error('Không thể tải danh sách khiếu nại');
     } finally {
-      setIsLoadingConversations(false);
+      setIsLoadingComplaints(false);
     }
   }, []);
 
-  // Load messages for a conversation
+  // Load messages for a complaint
   const loadMessages = useCallback(
-    async (toUserId: string, page: number, replace: boolean = false) => {
+    async (complaintId: string, page: number, replace: boolean = false) => {
       if (isFetchingMessagesRef.current) return;
 
       isFetchingMessagesRef.current = true;
@@ -103,24 +106,23 @@ export function ChatPage() {
       }
 
       try {
-        const response = await chatService.getManyChats({
-          toUserId,
+        const response = await complaintService.getManyComplaintMessages({
+          complaintId,
           page,
           limit: MESSAGES_PER_PAGE,
         });
 
-        console.log('[ChatPage] Raw messages response:', response);
+        console.log('[ComplaintPage] Raw messages response:', response);
 
-        // Axios interceptor already unwraps response.data
         // API returns messages DESC (newest first), reverse to ASC (oldest first) for UI
-        const chats = response.chats || [];
-        const newMessages = [...chats].reverse();
+        const complaintMessages = response.complaintMessages || [];
+        const newMessages = [...complaintMessages].reverse();
 
         if (replace) {
           // Initial load - replace all messages (oldest to newest)
           setMessages(newMessages);
           setMessagesPage(page);
-          setHasMoreMessages(chats.length === MESSAGES_PER_PAGE);
+          setHasMoreMessages(complaintMessages.length === MESSAGES_PER_PAGE);
           
           // Scroll to bottom
           requestAnimationFrame(() => {
@@ -142,7 +144,7 @@ export function ChatPage() {
           });
 
           setMessagesPage(page);
-          setHasMoreMessages(chats.length === MESSAGES_PER_PAGE);
+          setHasMoreMessages(complaintMessages.length === MESSAGES_PER_PAGE);
 
           // Maintain scroll position
           requestAnimationFrame(() => {
@@ -170,7 +172,7 @@ export function ChatPage() {
   // Handle scroll to load older messages
   const handleMessagesScroll = useCallback(() => {
     const container = messagesScrollRef.current;
-    if (!container || !selectedConversation) return;
+    if (!container || !selectedComplaint) return;
 
     const nearTop = container.scrollTop < 100;
     const nearBottom =
@@ -180,57 +182,110 @@ export function ChatPage() {
 
     // Load older messages when scrolled to top
     if (nearTop && hasMoreMessages && !isLoadingOlderMessages && !isFetchingMessagesRef.current) {
-      loadMessages(selectedConversation.id, messagesPage + 1, false);
+      loadMessages(selectedComplaint.id, messagesPage + 1, false);
     }
-  }, [selectedConversation, hasMoreMessages, isLoadingOlderMessages, messagesPage, loadMessages]);
+  }, [selectedComplaint, hasMoreMessages, isLoadingOlderMessages, messagesPage, loadMessages]);
 
-  // Send message - Giống test-chat.html
+  // Send message via WebSocket
   const handleSendMessage = useCallback(() => {
-    if (!messageInput.trim() || !selectedConversation || !socket) {
-      if (!socket) {
-        toast.error('WebSocket chưa kết nối');
+    try {
+      console.log('[ComplaintPage] handleSendMessage called');
+      console.log('[ComplaintPage] messageInput:', messageInput);
+      console.log('[ComplaintPage] selectedComplaint:', selectedComplaint);
+      console.log('[ComplaintPage] complaintSocket:', complaintSocket);
+      
+      if (!messageInput.trim() || !selectedComplaint) {
+        console.log('[ComplaintPage] Cannot send - missing input or complaint');
+        return;
       }
-      return;
-    }
 
-    if (!socket.connected) {
-      toast.error('WebSocket đã ngắt kết nối, vui lòng đợi...');
-      return;
-    }
-
-    const content = messageInput.trim();
-    setMessageInput('');
-
-    // Payload giống test-chat.html
-    const message = {
-      toUserId: selectedConversation.id,
-      content: content,
-    };
-
-    console.log('[Chat] 📤 Sending message:', message);
-    socket.emit('sendChat', message);
-
-    // Scroll to bottom
-    requestAnimationFrame(() => {
-      if (messagesScrollRef.current) {
-        messagesScrollRef.current.scrollTop = messagesScrollRef.current.scrollHeight;
+      if (!complaintSocket) {
+        toast.error('Đang kết nối WebSocket, vui lòng thử lại');
+        console.log('[ComplaintPage] WebSocket not connected yet');
+        return;
       }
-    });
-  }, [messageInput, selectedConversation, socket]);
 
-  // Handle incoming message - Giống test-chat.html
-  const handleNewMessage = useCallback((data: ChatMessage) => {
-    console.log('[Chat] 📨 Received newChat:', data);
+      const content = messageInput.trim();
+      setMessageInput('');
+
+      // Prepare WebSocket payload
+      const payload = {
+        complaintId: selectedComplaint.id,
+        content,
+        messageType: 'TEXT',
+      };
+
+      console.log('[ComplaintPage] Sending message via WebSocket:', payload);
+
+      // Send via WebSocket - complaint namespace uses default 'message' event or direct send
+      if (complaintSocket.send) {
+        complaintSocket.send(payload);
+      } else if (complaintSocket.emit) {
+        complaintSocket.emit('message', payload);
+      } else {
+        console.error('[ComplaintPage] Socket does not support send or emit method');
+        return;
+      }
+      
+      // Optimistically add message to UI
+      const optimisticMessage: ComplaintMessage = {
+        id: `temp-${Date.now()}`,
+        complaintId: selectedComplaint.id,
+        senderId: 'ADMIN',
+        messageType: 'TEXT',
+        content,
+        createdAt: new Date().toISOString(),
+      };
+
+      setMessages((prev) => [...prev, optimisticMessage]);
+      shouldStickToBottomRef.current = true;
+
+      // Scroll to bottom
+      requestAnimationFrame(() => {
+        if (messagesScrollRef.current) {
+          messagesScrollRef.current.scrollTop = messagesScrollRef.current.scrollHeight;
+        }
+      });
+    } catch (error) {
+      console.error('[ComplaintPage] Error sending message:', error);
+      toast.error('Lỗi khi gửi tin nhắn');
+    }
+  }, [messageInput, selectedComplaint, complaintSocket]);
+
+  // Handle incoming message from WebSocket
+  const handleIncomingMessage = useCallback((data: ComplaintMessage) => {
+    console.log('[ComplaintPage] ✅ Received message event:', data);
     
     setMessages((prev) => {
-      // Tránh duplicate
-      if (prev.some((msg) => msg.id === data.id)) {
+      // Check if message already exists by real ID (prevent duplicates)
+      const existingIndex = prev.findIndex((msg) => msg.id === data.id);
+      if (existingIndex !== -1) {
+        console.log('[ComplaintPage] Message already exists (real ID), skipping');
         return prev;
       }
+
+      // Check if this is a response to our optimistic message
+      const optimisticIndex = prev.findIndex(
+        (msg) => 
+          msg.id.startsWith('temp-') && 
+          msg.content === data.content &&
+          msg.complaintId === data.complaintId
+      );
+
+      if (optimisticIndex !== -1) {
+        console.log('[ComplaintPage] ✅ Replacing optimistic message with real one');
+        // Replace optimistic message with real one from backend
+        const updated = [...prev];
+        updated[optimisticIndex] = data;
+        return updated;
+      }
+
+      // New message from user
+      console.log('[ComplaintPage] ✅ Adding new message from user');
       return [...prev, data];
     });
 
-    // Scroll to bottom nếu đang ở cuối
+    // Scroll to bottom if already at bottom
     if (shouldStickToBottomRef.current) {
       requestAnimationFrame(() => {
         if (messagesScrollRef.current) {
@@ -238,96 +293,79 @@ export function ChatPage() {
         }
       });
     }
-
-    // Update conversation list
-    setConversations((prev) =>
-      prev.map((conv) => {
-        const isRelated = conv.id === data.fromUserId || conv.id === data.toUserId;
-        
-        if (isRelated) {
-          return {
-            ...conv,
-            lastMessage: data.content,
-            lastMessageDate: data.createdAt,
-            unread: conv.id === data.fromUserId ? (conv.unread || 0) + 1 : (conv.unread || 0),
-          };
-        }
-        return conv;
-      })
-    );
   }, []);
 
-  // Initialize WebSocket - Giống test-chat.html
+  // Initialize WebSocket
   useEffect(() => {
-    const wsUrl = import.meta.env.VITE_WS_URL || 'http://localhost:3000';
-    const namespace = '/chat';
+    if (!selectedComplaint?.id) {
+      // Clear socket if no complaint selected
+      if (complaintSocket) {
+        complaintSocket.close();
+        setComplaintSocket(null);
+      }
+      return;
+    }
 
-    console.log('[Chat] 🔌 Connecting WebSocket to:', `${wsUrl}${namespace}`);
-    console.log('[Chat] 🍪 Using httpOnly cookies (sent automatically by browser)');
+    console.log('[ComplaintPage] 🔌 Connecting to complaint:', selectedComplaint.id);
+    console.log('[ComplaintPage] 🍪 Using httpOnly cookies for auth');
 
-    // Socket.IO options
-    // QUAN TRỌNG: Với httpOnly cookies, KHÔNG thể đọc bằng document.cookie
-    // Browser sẽ TỰ ĐỘNG gửi cookies qua HTTP headers khi withCredentials: true
-    const socketOptions: any = {
-      withCredentials: true, // Browser tự động gửi httpOnly cookies
-      transports: ['websocket', 'polling'],
-    };
+    const socket = connectComplaintSocket(selectedComplaint.id, { debug: true });
+    setComplaintSocket(socket);
 
-    console.log('[Chat] ✅ Browser will automatically send httpOnly cookies with requests');
-
-    const socketInstance = io(`${wsUrl}${namespace}`, socketOptions);
-    setSocket(socketInstance);
-
-    // Lắng nghe events
-    socketInstance.on('connect', () => {
-      console.log('[Chat] ✅ WebSocket connected! Socket ID:', socketInstance.id);
-      setIsSocketConnected(true);
+    // Listen for new messages - try multiple possible event names
+    const unsubscribeMessage = socket.on('message', (data) => {
+      console.log('[ComplaintPage] ✅ Received message event:', data);
+      handleIncomingMessage(data);
+    });
+    
+    const unsubscribeNewMessage = socket.on('newMessage', (data) => {
+      console.log('[ComplaintPage] ✅ Received newMessage event:', data);
+      handleIncomingMessage(data);
+    });
+    
+    const unsubscribeComplaintMessage = socket.on('complaintMessage', (data) => {
+      console.log('[ComplaintPage] ✅ Received complaintMessage event:', data);
+      handleIncomingMessage(data);
+    });
+    
+    // Listen for connection events
+    const unsubConnect = socket.on('connect', () => {
+      console.log('[ComplaintPage] ✅ WebSocket connected for complaint:', selectedComplaint.id);
+    });
+    
+    const unsubDisconnect = socket.on('disconnect', () => {
+      console.log('[ComplaintPage] ❌ WebSocket disconnected');
+    });
+    
+    const unsubError = socket.on('error', (error: any) => {
+      console.error('[ComplaintPage] ❌ WebSocket error:', error);
     });
 
-    socketInstance.on('disconnect', (reason) => {
-      console.log('[Chat] ❌ WebSocket disconnected. Reason:', reason);
-      setIsSocketConnected(false);
-    });
-
-    socketInstance.on('connect_error', (error) => {
-      console.error('[Chat] ❌ Connection error:', error.message);
-      setIsSocketConnected(false);
-    });
-
-    // Lắng nghe event 'newChat' - QUAN TRỌNG
-    socketInstance.on('newChat', (data: ChatMessage) => {
-      console.log('[Chat] 📨 New chat message:', data);
-      handleNewMessage(data);
-    });
-
-    // Cleanup
     return () => {
-      console.log('[Chat] 🔌 Disconnecting WebSocket...');
-      socketInstance.disconnect();
+      unsubscribeMessage();
+      unsubscribeNewMessage();
+      unsubscribeComplaintMessage();
+      unsubConnect();
+      unsubDisconnect();
+      unsubError();
+      socket.close();
     };
-  }, [handleNewMessage]);
+  }, [selectedComplaint?.id, handleIncomingMessage]);
 
-  // Load conversations on mount
+  // Load complaints on mount
   useEffect(() => {
-    loadConversations(conversationsPage, searchQuery);
-  }, [conversationsPage, searchQuery, loadConversations]);
+    loadComplaints(complaintsPage, searchQuery);
+  }, [complaintsPage, searchQuery, loadComplaints]);
 
-  // Load messages when conversation is selected
+  // Load messages when complaint is selected
   useEffect(() => {
-    if (selectedConversation) {
+    if (selectedComplaint) {
       setMessages([]);
       setMessagesPage(1);
       setHasMoreMessages(true);
-      loadMessages(selectedConversation.id, 1, true);
-
-      // Mark conversation as read
-      setConversations((prev) =>
-        prev.map((conv) =>
-          conv.id === selectedConversation.id ? { ...conv, unread: 0 } : conv
-        )
-      );
+      loadMessages(selectedComplaint.id, 1, true);
     }
-  }, [selectedConversation, loadMessages]);
+  }, [selectedComplaint, loadMessages]);
 
   // Helper functions
   const formatTime = (dateString: string) => {
@@ -359,79 +397,73 @@ export function ChatPage() {
     return name.substring(0, 2);
   };
 
-  const isMessageFromAdmin = (message: ChatMessage) => {
-    // Trong context chat admin-user:
-    // - Message từ user: fromUserId === selectedConversation.id (user gửi cho admin)
-    // - Message từ admin: fromUserId !== selectedConversation.id (admin gửi cho user)
-    // Hoặc check nếu toUserId === selectedConversation.id (admin gửi cho user này)
-    
-    if (!selectedConversation) return false;
-    
-    // Check if this message was sent TO the selected user (meaning admin sent it)
-    // OR if fromUserId is not the selected user (also means admin sent it)
-    return message.toUserId === selectedConversation.id || 
-           (message.fromUserId !== selectedConversation.id && message.fromUserId !== null);
+  const isMessageFromAdmin = (message: ComplaintMessage) => {
+    // Admin messages have senderId that's not the complaint's userId
+    // Or check if it's the optimistic message
+    if (!selectedComplaint) return false;
+    return message.senderId === 'ADMIN' || message.senderId !== selectedComplaint.userId;
+  };
+
+  const getStatusBadge = (status: string) => {
+    const statusMap: Record<string, { label: string; className: string }> = {
+      OPEN: { label: 'Mở', className: 'bg-blue-100 text-blue-800' },
+      IN_PROGRESS: { label: 'Đang xử lý', className: 'bg-yellow-100 text-yellow-800' },
+      RESOLVED: { label: 'Đã giải quyết', className: 'bg-green-100 text-green-800' },
+      CLOSED: { label: 'Đã đóng', className: 'bg-gray-100 text-gray-800' },
+    };
+    const config = statusMap[status] || { label: status, className: 'bg-gray-100 text-gray-800' };
+    return (
+      <Badge className={`${config.className} border-0`}>
+        {config.label}
+      </Badge>
+    );
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold">Quản Lý Chat</h2>
-        
-        {/* WebSocket Status Indicator */}
-        <div className="flex items-center gap-2">
-          <div
-            className={`h-2 w-2 rounded-full ${
-              isSocketConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'
-            }`}
-          />
-          <span className="text-sm text-gray-600">
-            {isSocketConnected ? 'Đã kết nối WebSocket' : 'Chưa kết nối WebSocket'}
-          </span>
-        </div>
-      </div>
+      <h2 className="text-2xl font-semibold">Quản Lý Khiếu Nại</h2>
 
       <div
         className="grid grid-cols-1 lg:grid-cols-3 gap-6"
         style={{ height: 'calc(100vh - 12rem)' }}
       >
-        {/* Conversations List */}
+        {/* Complaints List */}
         <div className="lg:col-span-1 bg-white rounded-lg shadow flex flex-col overflow-hidden">
           {/* Search Header */}
           <div className="p-4 border-b bg-gray-50 flex-shrink-0">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
-                placeholder="Tìm kiếm cuộc trò chuyện..."
+                placeholder="Tìm kiếm khiếu nại..."
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
-                  setConversationsPage(1);
+                  setComplaintsPage(1);
                 }}
                 className="pl-10"
               />
             </div>
           </div>
 
-          {/* Conversations List */}
+          {/* Complaints List */}
           <div className="flex-1 overflow-hidden">
-            {isLoadingConversations ? (
+            {isLoadingComplaints ? (
               <div className="flex items-center justify-center h-full">
                 <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
               </div>
-            ) : conversations.length === 0 ? (
+            ) : complaints.length === 0 ? (
               <div className="p-8 text-center text-gray-500">
-                <p>Không có cuộc trò chuyện nào</p>
+                <p>Không có khiếu nại nào</p>
               </div>
             ) : (
               <ScrollArea className="h-full">
                 <div className="divide-y">
-                  {conversations.map((conversation) => (
+                  {complaints.map((complaint) => (
                     <button
-                      key={conversation.id}
-                      onClick={() => setSelectedConversation(conversation)}
+                      key={complaint.id}
+                      onClick={() => setSelectedComplaint(complaint)}
                       className={`w-full p-4 text-left hover:bg-gray-50 transition-colors relative ${
-                        selectedConversation?.id === conversation.id
+                        selectedComplaint?.id === complaint.id
                           ? 'bg-blue-50 border-l-4 border-[#007BFF]'
                           : ''
                       }`}
@@ -440,32 +472,24 @@ export function ChatPage() {
                         <div className="relative flex-shrink-0">
                           <Avatar className="h-12 w-12">
                             <AvatarImage
-                              src={
-                                conversation.avatarUrl ||
-                                `https://api.dicebear.com/7.x/avataaars/svg?seed=${conversation.fullName}`
-                              }
+                              src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${complaint.userId}`}
                             />
                             <AvatarFallback className="bg-[#007BFF] text-white">
-                              {getInitials(conversation.fullName)}
+                              <AlertCircle className="h-6 w-6" />
                             </AvatarFallback>
                           </Avatar>
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-1">
                             <span className="font-medium truncate">
-                              {conversation.fullName}
+                              {complaint.title}
                             </span>
-                            {(conversation.unread || 0) > 0 && (
-                              <Badge className="bg-[#007BFF] text-white ml-2 h-5 min-w-[20px] flex items-center justify-center rounded-full px-1.5">
-                                {conversation.unread}
-                              </Badge>
-                            )}
                           </div>
-                          <p className="text-sm text-gray-600 truncate mb-1">
-                            {conversation.lastMessage || 'Chưa có tin nhắn mới'}
-                          </p>
+                          <div className="flex items-center gap-2 mb-1">
+                            {getStatusBadge(complaint.status)}
+                          </div>
                           <p className="text-xs text-gray-400">
-                            {conversation.lastMessageDate ? getRelativeTime(conversation.lastMessageDate) : ''}
+                            {getRelativeTime(complaint.createdAt)}
                           </p>
                         </div>
                       </div>
@@ -479,16 +503,16 @@ export function ChatPage() {
           {/* Pagination */}
           <div className="p-3 border-t bg-gray-50 flex-shrink-0">
             <Pagination
-              currentPage={conversationsPage}
-              totalPages={conversationsTotalPages}
-              onPageChange={setConversationsPage}
+              currentPage={complaintsPage}
+              totalPages={complaintsTotalPages}
+              onPageChange={setComplaintsPage}
             />
           </div>
         </div>
 
         {/* Chat Window */}
         <div className="lg:col-span-2 bg-white rounded-lg shadow flex flex-col overflow-hidden">
-          {selectedConversation ? (
+          {selectedComplaint ? (
             <>
               {/* Chat Header */}
               <div className="p-4 border-b bg-white flex items-center justify-between flex-shrink-0">
@@ -496,19 +520,21 @@ export function ChatPage() {
                   <div className="relative">
                     <Avatar className="h-10 w-10">
                       <AvatarImage
-                        src={
-                          selectedConversation.avatarUrl ||
-                          `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedConversation.fullName}`
-                        }
+                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedComplaint.userId}`}
                       />
                       <AvatarFallback className="bg-[#007BFF] text-white">
-                        {getInitials(selectedConversation.fullName)}
+                        <AlertCircle className="h-6 w-6" />
                       </AvatarFallback>
                     </Avatar>
                   </div>
                   <div>
-                    <h3 className="font-medium">{selectedConversation.fullName}</h3>
-                    <p className="text-xs text-gray-500">Đang hoạt động</p>
+                    <h3 className="font-medium">{selectedComplaint.title}</h3>
+                    <div className="flex items-center gap-2">
+                      {getStatusBadge(selectedComplaint.status)}
+                      <span className="text-xs text-gray-500">
+                        User ID: {selectedComplaint.userId.substring(0, 8)}...
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <DropdownMenu>
@@ -522,12 +548,8 @@ export function ChatPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem>Xem thông tin</DropdownMenuItem>
-                    <DropdownMenuItem>Tắt thông báo</DropdownMenuItem>
-                    <DropdownMenuItem className="text-red-600">
-                      <Trash className="h-4 w-4 mr-2" />
-                      Xóa cuộc trò chuyện
-                    </DropdownMenuItem>
+                    <DropdownMenuItem>Đánh dấu đã giải quyết</DropdownMenuItem>
+                    <DropdownMenuItem>Đóng khiếu nại</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -583,13 +605,10 @@ export function ChatPage() {
                             {!isFromAdmin && (
                               <Avatar className="h-8 w-8 flex-shrink-0">
                                 <AvatarImage
-                                  src={
-                                    selectedConversation.avatarUrl ||
-                                    `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedConversation.fullName}`
-                                  }
+                                  src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedComplaint.userId}`}
                                 />
                                 <AvatarFallback className="bg-gray-300 text-gray-600 text-xs">
-                                  {getInitials(selectedConversation.fullName)}
+                                  U
                                 </AvatarFallback>
                               </Avatar>
                             )}
@@ -632,15 +651,8 @@ export function ChatPage() {
               {/* Message Input - Fixed at Bottom */}
               <div className="p-4 border-t bg-white flex-shrink-0">
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-gray-500 hover:text-[#007BFF] flex-shrink-0"
-                  >
-                    <Paperclip className="h-5 w-5" />
-                  </Button>
                   <Input
-                    placeholder="Nhập tin nhắn..."
+                    placeholder="Nhập tin nhắn trả lời..."
                     value={messageInput}
                     onChange={(e) => setMessageInput(e.target.value)}
                     onKeyPress={(e) => {
@@ -653,7 +665,7 @@ export function ChatPage() {
                   />
                   <Button
                     onClick={handleSendMessage}
-                    disabled={!messageInput.trim() || !isSocketConnected}
+                    disabled={!messageInput.trim()}
                     className="bg-[#007BFF] hover:bg-[#0056b3] disabled:bg-gray-300 rounded-full h-10 w-10 p-0 flex-shrink-0"
                   >
                     <Send className="h-4 w-4" />
@@ -665,12 +677,12 @@ export function ChatPage() {
             <div className="flex-1 flex flex-col items-center justify-center text-gray-400 bg-gray-50">
               <div className="text-center">
                 <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-gray-200 flex items-center justify-center">
-                  <Send className="h-12 w-12 text-gray-400" />
+                  <AlertCircle className="h-12 w-12 text-gray-400" />
                 </div>
                 <h3 className="text-lg font-medium text-gray-600 mb-2">
-                  Chào mừng đến với Chat
+                  Quản lý khiếu nại
                 </h3>
-                <p className="text-sm">Chọn một cuộc trò chuyện để bắt đầu nhắn tin</p>
+                <p className="text-sm">Chọn một khiếu nại để xem chi tiết và trả lời</p>
               </div>
             </div>
           )}

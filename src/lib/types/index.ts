@@ -2,6 +2,7 @@ export * from './auth';
 export * from './blog';
 export * from './booking';
 export * from './equipment';
+export * from './equipment.types';
 export * from './media';
 export * from './notification';
 export * from './payment';

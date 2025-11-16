@@ -17,9 +17,11 @@ interface PresignedUrlResponse {
 export const getPresignedUrl = async (
   filename: string
 ): Promise<PresignedUrlResponse> => {
-  // axiosInstance response interceptor already unwraps { data, message, statusCode }
-  // So this will return { presignedUrl, url } directly
-  return await axiosInstance.post("/media/presigned", { filename });
+  // axiosInstance interceptor returns 'data' from { data, message, statusCode }
+  // So this directly returns { presignedUrl, url }
+  const result: any = await axiosInstance.post("/media/presigned", { filename });
+  console.log('Presigned URL result:', result);
+  return result as PresignedUrlResponse;
 };
 
 /**
@@ -29,7 +31,7 @@ export const uploadToPresignedUrl = async (
   presignedUrl: string,
   file: File
 ): Promise<void> => {
-  // Use raw axios (not axiosInstance) to upload to S3/DigitalOcean Spaces
+  // Use raw axios (not axiosInstance) to upload to DigitalOcean Spaces
   // because we don't want interceptors to interfere with the upload
   await axios.put(presignedUrl, file, {
     headers: {

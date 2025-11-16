@@ -1,5 +1,5 @@
-import { ArrowLeft, Save, Upload } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowLeft, Save, Upload, X } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -12,40 +12,213 @@ import {
   SelectValue,
 } from '../../components/ui/select';
 import { Textarea } from '../../components/ui/textarea';
+import { getDevice, createDevice, updateDevice, getAllCategories } from '../../lib/services/equipment.service';
+import * as mediaService from '../../lib/services/media.service';
+import { toast } from 'sonner';
+
+interface Category {
+  Id: string;
+  Name: string;
+  LogoUrl?: string;
+  CreatedAt?: string;
+  UpdatedAt?: string;
+}
 
 export function EquipmentDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const isNewEquipment = !id || id === 'new';
 
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
-    category: '',
-    status: 'available',
+    categoryId: '',
+    status: 'AVAILABLE',
     price: '',
-    deposit: '',
-    owner: '',
-    condition: '',
     description: '',
-    specifications: '',
+    information: [] as string[],
     quantity: '1',
   });
 
   const [images, setImages] = useState<string[]>([]);
+  const [informationText, setInformationText] = useState('');
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    console.log('Equipment data:', formData);
-    navigate('/equipment');
-  };
+  useEffect(() => {
+    fetchCategories();
+  }, []);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files) {
-      const newImages = Array.from(files).map(file => URL.createObjectURL(file));
-      setImages([...images, ...newImages]);
+  useEffect(() => {
+    if (!isNewEquipment && id) {
+      fetchDevice();
+    }
+  }, [id, isNewEquipment]);
+
+  const fetchCategories = async () => {
+    try {
+      // Hardcoded categories as fallback since /device-category returns 404
+      const hardcodedCategories: Category[] = [
+        {
+          Id: 'c0000001-0000-0000-0000-000000000001',
+          Name: 'Laptops',
+          LogoUrl: 'https://example.com/icons/laptop.png'
+        },
+        {
+          Id: 'c0000002-0000-0000-0000-000000000002',
+          Name: 'Peripherals (Phụ kiện)',
+          LogoUrl: 'https://example.com/icons/mouse.png'
+        },
+        {
+          Id: 'c0000003-0000-0000-0000-000000000003',
+          Name: 'Displays (Màn hình)',
+          LogoUrl: 'https://example.com/icons/monitor.png'
+        },
+        {
+          Id: 'c0000100-0000-0000-0000-000000000100',
+          Name: 'Dụng Cụ Outdoor (Cắm Trại)',
+          LogoUrl: 'https://example.com/icons/outdoor.png'
+        }
+      ];
+      
+      console.log('Using hardcoded categories:', hardcodedCategories);
+      setCategories(hardcodedCategories);
+      
+      // Uncomment below when correct API endpoint is available
+      /*
+      const response = await getAllCategories();
+      console.log('Categories RAW response:', response);
+      let categoryList: Category[] = [];
+      
+      if (Array.isArray(response)) {
+        categoryList = response;
+      } else if (response?.data && Array.isArray(response.data)) {
+        categoryList = response.data;
+      }
+      
+      console.log('Final category list:', categoryList);
+      setCategories(categoryList);
+      */
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+      toast.error('Không thể tải danh sách danh mục');
     }
   };
+
+  const fetchDevice = async () => {
+    if (!id) return;
+    setLoading(true);
+    try {
+      const response = await getDevice(id);
+      console.log('Device detail response:', response);
+      const device = response;
+      setFormData({
+        name: device.name || '',
+        categoryId: device.categoryId || '',
+        status: device.status || 'AVAILABLE',
+        price: device.price?.toString() || '',
+        description: device.description || '',
+        information: device.information || [],
+        quantity: device.quantity?.toString() || '1',
+      });
+      setImages(device.images || []);
+      setInformationText(device.information?.join('\n') || '');
+    } catch (error) {
+      console.error('Error fetching device:', error);
+      toast.error('Không thể tải thông tin thiết bị');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploadingImage(true);
+
+    try {
+      // Upload multiple files
+      const uploadPromises = Array.from(files).map(async (file) => {
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+          throw new Error(`${file.name} không phải là file ảnh`);
+        }
+
+        // Validate file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+          throw new Error(`${file.name} vượt quá 5MB`);
+        }
+
+        // Upload and get URL
+        const url = await mediaService.uploadImage(file);
+        return url;
+      });
+
+      const uploadedUrls = await Promise.all(uploadPromises);
+      setImages([...images, ...uploadedUrls]);
+      toast.success(`Đã upload ${uploadedUrls.length} ảnh thành công`);
+
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (error: any) {
+      console.error('Error uploading images:', error);
+      toast.error(error.message || 'Không thể upload ảnh');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setImages(images.filter((_, i) => i !== index));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    
+    try {
+      const data = {
+        name: formData.name,
+        categoryId: formData.categoryId,
+        status: formData.status,
+        price: Number(formData.price),
+        description: formData.description,
+        information: informationText.split('\n').filter(line => line.trim()),
+        quantity: Number(formData.quantity),
+        images: images,
+      };
+
+      console.log('Submitting device data:', data);
+
+      if (isNewEquipment) {
+        console.log('POST /device - Creating new device');
+        await createDevice(data);
+        toast.success('Tạo thiết bị thành công');
+      } else {
+        console.log(`PUT /device/${id} - Updating device`);
+        await updateDevice(id!, data);
+        toast.success('Cập nhật thiết bị thành công');
+      }
+      navigate('/equipment');
+    } catch (error) {
+      console.error('Error saving device:', error);
+      toast.error('Không thể lưu thiết bị');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading && !isNewEquipment) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">Đang tải...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -84,27 +257,28 @@ export function EquipmentDetailPage() {
               <Input
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="VD: Máy khoan Bosch GSB 13 RE"
+                placeholder="VD: Dell XPS 15"
                 required
+                disabled={loading}
               />
             </div>
 
             <div>
               <Label>Danh Mục *</Label>
               <Select
-                value={formData.category}
-                onValueChange={(value) => setFormData({ ...formData, category: value })}
+                value={formData.categoryId}
+                onValueChange={(value) => setFormData({ ...formData, categoryId: value })}
+                disabled={loading}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Chọn danh mục" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="power-tools">Dụng cụ điện</SelectItem>
-                  <SelectItem value="garden">Thiết bị vườn</SelectItem>
-                  <SelectItem value="water">Thiết bị nước</SelectItem>
-                  <SelectItem value="generator">Thiết bị điện</SelectItem>
-                  <SelectItem value="tools">Dụng cụ</SelectItem>
-                  <SelectItem value="other">Khác</SelectItem>
+                  {categories.map((category) => (
+                    <SelectItem key={category.Id} value={category.Id}>
+                      {category.Name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -114,54 +288,29 @@ export function EquipmentDetailPage() {
               <Select
                 value={formData.status}
                 onValueChange={(value) => setFormData({ ...formData, status: value })}
+                disabled={loading}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="available">Có sẵn</SelectItem>
-                  <SelectItem value="rented">Đang thuê</SelectItem>
-                  <SelectItem value="maintenance">Bảo trì</SelectItem>
+                  <SelectItem value="AVAILABLE">Có sẵn</SelectItem>
+                  <SelectItem value="In Stock">In Stock</SelectItem>
+                  <SelectItem value="Low Stock">Low Stock</SelectItem>
+                  <SelectItem value="Unavailable">Không có sẵn</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div>
-              <Label>Tình Trạng</Label>
-              <Select
-                value={formData.condition}
-                onValueChange={(value) => setFormData({ ...formData, condition: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Chọn tình trạng" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="excellent">Rất tốt</SelectItem>
-                  <SelectItem value="good">Tốt</SelectItem>
-                  <SelectItem value="fair">Khá</SelectItem>
-                  <SelectItem value="poor">Cần sửa chữa</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label>Giá Thuê/Ngày (VNĐ) *</Label>
+              <Label>Giá (VNĐ) *</Label>
               <Input
                 type="number"
                 value={formData.price}
                 onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                 placeholder="50000"
                 required
-              />
-            </div>
-
-            <div>
-              <Label>Tiền Cọc (VNĐ)</Label>
-              <Input
-                type="number"
-                value={formData.deposit}
-                onChange={(e) => setFormData({ ...formData, deposit: e.target.value })}
-                placeholder="200000"
+                disabled={loading}
               />
             </div>
 
@@ -172,15 +321,7 @@ export function EquipmentDetailPage() {
                 value={formData.quantity}
                 onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
                 min="1"
-              />
-            </div>
-
-            <div>
-              <Label>Chủ Sở Hữu</Label>
-              <Input
-                value={formData.owner}
-                onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
-                placeholder="Nguyễn Văn A"
+                disabled={loading}
               />
             </div>
           </div>
@@ -192,17 +333,20 @@ export function EquipmentDetailPage() {
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               placeholder="Mô tả chi tiết về thiết bị..."
               rows={4}
+              disabled={loading}
             />
           </div>
 
           <div>
-            <Label>Thông Số Kỹ Thuật</Label>
+            <Label>Thông Tin (mỗi dòng 1 mục)</Label>
             <Textarea
-              value={formData.specifications}
-              onChange={(e) => setFormData({ ...formData, specifications: e.target.value })}
-              placeholder="Công suất, kích thước, trọng lượng..."
-              rows={4}
+              value={informationText}
+              onChange={(e) => setInformationText(e.target.value)}
+              placeholder="16GB DDR5 RAM&#10;1TB NVMe SSD&#10;NVIDIA RTX 4050"
+              rows={6}
+              disabled={loading}
             />
+            <p className="text-sm text-gray-500 mt-1">Mỗi dòng sẽ là một mục thông tin riêng biệt</p>
           </div>
         </div>
 
@@ -211,45 +355,53 @@ export function EquipmentDetailPage() {
           <h3>Hình Ảnh Thiết Bị</h3>
           
           <div>
-            <Label>Upload Hình Ảnh</Label>
-            <div className="mt-2">
-              <label className="flex items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-[#007BFF] transition-colors">
-                <div className="text-center">
-                  <Upload className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-                  <p className="text-gray-600">Click để upload hình ảnh</p>
-                  <p className="text-gray-400">hoặc kéo thả file vào đây</p>
-                </div>
-                <input
-                  type="file"
-                  className="hidden"
-                  accept="image/*"
-                  multiple
-                  onChange={handleImageUpload}
-                />
-              </label>
-            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleImageUpload}
+              className="hidden"
+              disabled={isUploadingImage || loading}
+            />
+            <Button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploadingImage || loading}
+              variant="outline"
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              {isUploadingImage ? 'Đang upload...' : 'Upload Hình Ảnh'}
+            </Button>
+            <p className="text-sm text-gray-500 mt-2">Chọn một hoặc nhiều ảnh (tối đa 5MB mỗi ảnh)</p>
+          </div>
 
-            {images.length > 0 && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-                {images.map((image, index) => (
-                  <div key={index} className="relative group">
+          {images.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              {images.map((image, index) => (
+                <div key={index} className="relative group border rounded-lg overflow-hidden bg-gray-50">
+                  <div className="aspect-square flex items-center justify-center p-2">
                     <img
                       src={image}
                       alt={`Equipment ${index + 1}`}
-                      className="w-full h-32 object-cover rounded-lg"
+                      className="max-w-full max-h-full object-contain"
+                      onError={(e) => {
+                        e.currentTarget.src = 'https://via.placeholder.com/300x200?text=Image+Not+Found';
+                      }}
                     />
-                    <button
-                      type="button"
-                      onClick={() => setImages(images.filter((_, i) => i !== index))}
-                      className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      ×
-                    </button>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveImage(index)}
+                    disabled={loading}
+                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </form>
     </div>

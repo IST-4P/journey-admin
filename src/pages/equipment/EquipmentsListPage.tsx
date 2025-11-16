@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronUp, Edit, Eye, Filter, Plus, Search, Trash2, X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Pagination } from '../../components/common/Pagination';
 import { Badge } from '../../components/ui/badge';
@@ -22,72 +22,133 @@ import {
   TableRow,
 } from '../../components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
-import { mockCombos, mockEquipment } from '../../lib/mockData';
+import { getManyDevices, getManyCombos, deleteDevice, deleteCombo } from '../../lib/services/equipment.service';
+import { Device, Combo } from '../../lib/types';
+import { toast } from 'sonner';
 
-const ITEMS_PER_PAGE = 15;
+const ITEMS_PER_PAGE = 10;
 
 export function EquipmentsListPage() {
   const navigate = useNavigate();
+  
+  // Equipment state
+  const [devices, setDevices] = useState<Device[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [brandFilter, setBrandFilter] = useState('all');
   const [priceMin, setPriceMin] = useState('');
   const [priceMax, setPriceMax] = useState('');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [loadingDevices, setLoadingDevices] = useState(false);
+
+  // Combo state
+  const [combos, setCombos] = useState<Combo[]>([]);
+  const [comboCurrentPage, setComboCurrentPage] = useState(1);
+  const [comboTotalPages, setComboTotalPages] = useState(1);
+  const [comboTotalItems, setComboTotalItems] = useState(0);
+  const [comboSearchQuery, setComboSearchQuery] = useState('');
+  const [loadingCombos, setLoadingCombos] = useState(false);
+  
   const [activeTab, setActiveTab] = useState('equipment');
 
-  // Combo filters
-  const [comboSearchQuery, setComboSearchQuery] = useState('');
-  const [comboCurrentPage, setComboCurrentPage] = useState(1);
+  // Get unique categories from devices
+  const categories = Array.from(new Set(devices.map((d) => d.categoryName).filter(Boolean)));
 
-  // Get unique categories and brands
-  const categories = Array.from(new Set(mockEquipment.map((e) => e.category).filter(Boolean)));
-  const brands = Array.from(new Set(mockEquipment.map((e) => e.brand).filter(Boolean)));
+  // Fetch devices
+  const fetchDevices = async () => {
+    setLoadingDevices(true);
+    try {
+      const params: any = {
+        limit: ITEMS_PER_PAGE,
+        page: currentPage,
+      };
+      
+      if (searchQuery) params.search = searchQuery;
+      if (categoryFilter !== 'all') params.category = categoryFilter;
+      if (statusFilter !== 'all') params.status = statusFilter;
+      if (priceMin) params.minPrice = Number(priceMin);
+      if (priceMax) params.maxPrice = Number(priceMax);
 
-  // Filter equipment
-  const filteredEquipment = mockEquipment.filter((equipment) => {
-    const matchesSearch =
-      equipment.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      equipment.id.toString().includes(searchQuery);
-    const matchesCategory = categoryFilter === 'all' || equipment.category === categoryFilter;
-    const matchesStatus = statusFilter === 'all' || equipment.status === statusFilter;
-    const matchesBrand = brandFilter === 'all' || equipment.brand === brandFilter;
-    const matchesPriceMin = !priceMin || equipment.price >= Number(priceMin);
-    const matchesPriceMax = !priceMax || equipment.price <= Number(priceMax);
+      const response = await getManyDevices(params);
+      console.log('Device response:', response);
+      setDevices(response.devices || []);
+      setTotalPages(response.totalPages || 1);
+      setTotalItems(response.totalItems || 0);
+    } catch (error) {
+      console.error('Error fetching devices:', error);
+      toast.error('Không thể tải danh sách thiết bị');
+    } finally {
+      setLoadingDevices(false);
+    }
+  };
 
-    return (
-      matchesSearch &&
-      matchesCategory &&
-      matchesStatus &&
-      matchesBrand &&
-      matchesPriceMin &&
-      matchesPriceMax
-    );
-  });
+  // Fetch combos
+  const fetchCombos = async () => {
+    setLoadingCombos(true);
+    try {
+      const params: any = {
+        limit: ITEMS_PER_PAGE,
+        page: comboCurrentPage,
+      };
+      
+      if (comboSearchQuery) params.search = comboSearchQuery;
 
-  // Filter combos
-  const filteredCombos = mockCombos.filter((combo) =>
-    combo.name.toLowerCase().includes(comboSearchQuery.toLowerCase()) ||
-    combo.id.toString().includes(comboSearchQuery)
-  );
+      const response = await getManyCombos(params);
+      console.log('Combo response:', response);
+      setCombos(response.combos || []);
+      setComboTotalPages(response.totalPages || 1);
+      setComboTotalItems(response.totalItems || 0);
+    } catch (error) {
+      console.error('Error fetching combos:', error);
+      toast.error('Không thể tải danh sách combo');
+    } finally {
+      setLoadingCombos(false);
+    }
+  };
 
-  // Pagination for equipment
-  const totalPages = Math.ceil(filteredEquipment.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedEquipment = filteredEquipment.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  // Fetch devices on mount and when filters change
+  useEffect(() => {
+    fetchDevices();
+  }, [currentPage, searchQuery, categoryFilter, statusFilter, priceMin, priceMax]);
 
-  // Pagination for combos
-  const comboTotalPages = Math.ceil(filteredCombos.length / ITEMS_PER_PAGE);
-  const comboStartIndex = (comboCurrentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedCombos = filteredCombos.slice(comboStartIndex, comboStartIndex + ITEMS_PER_PAGE);
+  // Fetch combos on mount and when filters change
+  useEffect(() => {
+    fetchCombos();
+  }, [comboCurrentPage, comboSearchQuery]);
+
+  const handleDeleteDevice = async (id: string) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa thiết bị này?')) return;
+    
+    try {
+      await deleteDevice(id);
+      toast.success('Xóa thiết bị thành công');
+      fetchDevices();
+    } catch (error) {
+      console.error('Error deleting device:', error);
+      toast.error('Không thể xóa thiết bị');
+    }
+  };
+
+  const handleDeleteCombo = async (id: string) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa combo này?')) return;
+    
+    try {
+      await deleteCombo(id);
+      toast.success('Xóa combo thành công');
+      fetchCombos();
+    } catch (error) {
+      console.error('Error deleting combo:', error);
+      toast.error('Không thể xóa combo');
+    }
+  };
 
   const clearFilters = () => {
     setSearchQuery('');
     setCategoryFilter('all');
     setStatusFilter('all');
-    setBrandFilter('all');
     setPriceMin('');
     setPriceMax('');
     setCurrentPage(1);
@@ -199,23 +260,7 @@ export function EquipmentsListPage() {
             </div>
 
             {showAdvancedFilters && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
-                <div className="space-y-2">
-                  <Label>Hãng</Label>
-                  <Select value={brandFilter} onValueChange={setBrandFilter}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Tất cả hãng" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Tất cả hãng</SelectItem>
-                      {brands.map((brand) => (
-                        <SelectItem key={brand} value={brand}>
-                          {brand}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
                 <div className="space-y-2">
                   <Label>Giá tối thiểu (VNĐ)</Label>
                   <Input
@@ -240,12 +285,11 @@ export function EquipmentsListPage() {
             {(searchQuery ||
               categoryFilter !== 'all' ||
               statusFilter !== 'all' ||
-              brandFilter !== 'all' ||
               priceMin ||
               priceMax) && (
               <div className="flex items-center justify-between pt-2 border-t">
                 <p className="text-sm text-gray-600">
-                  Tìm thấy {filteredEquipment.length} thiết bị
+                  Tìm thấy {totalItems} thiết bị
                 </p>
                 <Button variant="ghost" size="sm" onClick={clearFilters}>
                   <X className="h-4 w-4 mr-2" />
@@ -257,58 +301,66 @@ export function EquipmentsListPage() {
 
           {/* Equipment Table */}
           <div className="bg-white rounded-lg shadow overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Tên Thiết Bị</TableHead>
-                  <TableHead>Danh Mục</TableHead>
-                  <TableHead>Hãng</TableHead>
-                  <TableHead>Giá/Ngày</TableHead>
-                  <TableHead>Số Lượng</TableHead>
-                  <TableHead>Trạng Thái</TableHead>
-                  <TableHead className="text-right">Hành Động</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paginatedEquipment.map((equipment, index) => (
-                  <TableRow key={equipment.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                    <TableCell>{equipment.id}</TableCell>
-                    <TableCell>{equipment.name}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{equipment.category}</Badge>
-                    </TableCell>
-                    <TableCell>{equipment.brand || '-'}</TableCell>
-                    <TableCell>{formatCurrency(equipment.price)}</TableCell>
-                    <TableCell>{equipment.quantity || 0}</TableCell>
-                    <TableCell>
-                      <Badge className={getStatusColor(equipment.status)}>
-                        {getStatusLabel(equipment.status)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end space-x-2">
-                        <Link to={`/equipment/${equipment.id}`}>
-                          <Button variant="ghost" size="sm">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </Link>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => navigate(`/equipment/${equipment.id}/edit`)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm">
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </Button>
-                      </div>
-                    </TableCell>
+            {loadingDevices ? (
+              <div className="p-8 text-center">Đang tải...</div>
+            ) : devices.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">Không tìm thấy thiết bị nào</div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Tên Thiết Bị</TableHead>
+                    <TableHead>Danh Mục</TableHead>
+                    <TableHead>Giá/Ngày</TableHead>
+                    <TableHead>Số Lượng</TableHead>
+                    <TableHead>Trạng Thái</TableHead>
+                    <TableHead className="text-right">Hành Động</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {devices.map((equipment: Device, index: number) => (
+                    <TableRow key={equipment.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
+                      <TableCell className="font-mono text-xs">{equipment.id.slice(0, 8)}...</TableCell>
+                      <TableCell>{equipment.name}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{equipment.categoryName}</Badge>
+                      </TableCell>
+                      <TableCell>{formatCurrency(equipment.price)}</TableCell>
+                      <TableCell>{equipment.quantity || 0}</TableCell>
+                      <TableCell>
+                        <Badge className={getStatusColor(equipment.status)}>
+                          {getStatusLabel(equipment.status)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end space-x-2">
+                          <Link to={`/equipment/${equipment.id}`}>
+                            <Button variant="ghost" size="sm">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => navigate(`/equipment/${equipment.id}/edit`)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => handleDeleteDevice(equipment.id)}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </div>
 
           <Pagination
@@ -345,48 +397,58 @@ export function EquipmentsListPage() {
 
           {/* Combo Table */}
           <div className="bg-white rounded-lg shadow overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Tên Combo</TableHead>
-                  <TableHead>Số Thiết Bị</TableHead>
-                  <TableHead>Giá/Ngày</TableHead>
-                  <TableHead>Ngày Tạo</TableHead>
-                  <TableHead className="text-right">Hành Động</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paginatedCombos.map((combo, index) => (
-                  <TableRow key={combo.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                    <TableCell>{combo.id}</TableCell>
-                    <TableCell>{combo.name}</TableCell>
-                    <TableCell>{combo.devices.length} thiết bị</TableCell>
-                    <TableCell>{formatCurrency(combo.price)}</TableCell>
-                    <TableCell>{new Date(combo.createdAt).toLocaleDateString('vi-VN')}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end space-x-2">
-                        <Link to={`/equipment/combos/${combo.id}`}>
-                          <Button variant="ghost" size="sm">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </Link>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => navigate(`/equipment/combos/${combo.id}/edit`)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm">
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </Button>
-                      </div>
-                    </TableCell>
+            {loadingCombos ? (
+              <div className="p-8 text-center">Đang tải...</div>
+            ) : combos.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">Không tìm thấy combo nào</div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Tên Combo</TableHead>
+                    <TableHead>Số Thiết Bị</TableHead>
+                    <TableHead>Giá/Ngày</TableHead>
+                    <TableHead>Ngày Tạo</TableHead>
+                    <TableHead className="text-right">Hành Động</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {combos.map((combo: Combo, index: number) => (
+                    <TableRow key={combo.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
+                      <TableCell className="font-mono text-xs">{combo.id.slice(0, 8)}...</TableCell>
+                      <TableCell>{combo.name}</TableCell>
+                      <TableCell>{combo.deviceCount || 0} thiết bị</TableCell>
+                      <TableCell>{formatCurrency(combo.price)}</TableCell>
+                      <TableCell>{new Date(combo.createdAt).toLocaleDateString('vi-VN')}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end space-x-2">
+                          <Link to={`/equipment/combos/${combo.id}`}>
+                            <Button variant="ghost" size="sm">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => navigate(`/equipment/combos/${combo.id}/edit`)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => handleDeleteCombo(combo.id)}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </div>
 
           <Pagination

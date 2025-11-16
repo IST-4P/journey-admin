@@ -5,6 +5,7 @@ import { Sidebar } from "./components/layout/Sidebar";
 import { TopBar } from "./components/layout/TopBar";
 import { useAuthInit } from "./lib/hooks/useAuthInit";
 import { ChatPage } from "./pages/chat/ChatPage";
+import { ComplaintPage } from "./pages/complaints/ComplaintPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { ComboDetailPage } from "./pages/equipment/ComboDetailPage";
 import { ComboFormPage } from "./pages/equipment/ComboFormPage";
@@ -203,6 +204,7 @@ export default function App() {
                 {/* Notifications & Chat */}
                 <Route path="/notifications" element={<NotificationsPage />} />
                 <Route path="/chat" element={<ChatPage />} />
+                <Route path="/complaints" element={<ComplaintPage />} />
 
                 {/* System */}
                 <Route path="/system" element={<ReportsPage />} />

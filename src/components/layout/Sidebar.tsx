@@ -1,4 +1,4 @@
-import { Bell, BookOpen, Car, ChevronDown, ChevronRight, CreditCard, FileText, LayoutDashboard, MessageSquare, Package, Settings, Star, Users, Wrench } from 'lucide-react';
+import { AlertCircle, Bell, BookOpen, Car, ChevronDown, ChevronRight, CreditCard, FileText, LayoutDashboard, MessageSquare, Package, Settings, Star, Users, Wrench } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
@@ -49,6 +49,7 @@ export function Sidebar({ isOpen }: SidebarProps) {
     },
     { path: '/notifications', label: 'Thông Báo', icon: Bell },
     { path: '/chat', label: 'Chat', icon: MessageSquare },
+    { path: '/complaints', label: 'Khiếu Nại', icon: AlertCircle },
     { path: '/system', label: 'Hệ Thống', icon: Settings },
   ];
 

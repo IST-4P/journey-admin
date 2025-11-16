@@ -1,26 +1,19 @@
-import { ArrowLeft, Minus, Plus, Save, Upload, X } from 'lucide-react';
+import { ArrowLeft, Minus, Plus, Save, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../components/ui/select';
 import { Textarea } from '../../components/ui/textarea';
-import { mockCombos, mockEquipment, type ComboDevice } from '../../lib/mockData';
+import { getCombo, createCombo, updateCombo } from '../../lib/services/equipment.service';
+import { toast } from 'sonner';
 
 interface ComboFormData {
   name: string;
   price: number;
   description: string;
   images: string[];
-  devices: ComboDevice[];
 }
 
 const initialFormData: ComboFormData = {
@@ -28,7 +21,6 @@ const initialFormData: ComboFormData = {
   price: 0,
   description: '',
   images: [],
-  devices: [],
 };
 
 export function ComboFormPage() {
@@ -38,77 +30,67 @@ export function ComboFormPage() {
   
   const [formData, setFormData] = useState<ComboFormData>(initialFormData);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
 
   // Load combo data when editing
   useEffect(() => {
     if (!isNew && id) {
-      const combo = mockCombos.find((c) => c.id === Number(id));
-      if (combo) {
-        setFormData({
-          name: combo.name,
-          price: combo.price,
-          description: combo.description || '',
-          images: combo.images || [],
-          devices: combo.devices,
-        });
-        setImageUrls(combo.images || []);
-      }
+      fetchCombo();
     }
   }, [id, isNew]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const submitData = {
-      ...formData,
-      images: imageUrls,
-    };
-    console.log(`${isNew ? 'Create' : 'Update'} combo data:`, submitData);
-    navigate('/equipment');
-  };
-
-  const handleAddDevice = () => {
-    if (mockEquipment.length === 0) return;
-    
-    const newDevice: ComboDevice = {
-      id: Date.now(),
-      deviceId: mockEquipment[0].id,
-      deviceName: mockEquipment[0].name,
-      quantity: 1,
-    };
-    
-    setFormData({
-      ...formData,
-      devices: [...formData.devices, newDevice],
-    });
-  };
-
-  const handleRemoveDevice = (index: number) => {
-    setFormData({
-      ...formData,
-      devices: formData.devices.filter((_, i) => i !== index),
-    });
-  };
-
-  const handleUpdateDevice = (index: number, field: 'deviceId' | 'quantity', value: number) => {
-    const newDevices = [...formData.devices];
-    
-    if (field === 'deviceId') {
-      const equipment = mockEquipment.find((e) => e.id === value);
-      if (equipment) {
-        newDevices[index] = {
-          ...newDevices[index],
-          deviceId: value,
-          deviceName: equipment.name,
-        };
-      }
-    } else {
-      newDevices[index] = {
-        ...newDevices[index],
-        quantity: value,
-      };
+  const fetchCombo = async () => {
+    if (!id) return;
+    setLoading(true);
+    try {
+      const response = await getCombo(id);
+      console.log('Combo form response:', response);
+      const combo = response;
+      setFormData({
+        name: combo.name || '',
+        price: combo.price || 0,
+        description: combo.description || '',
+        images: combo.images || [],
+      });
+      setImageUrls(combo.images || []);
+    } catch (error) {
+      console.error('Error fetching combo:', error);
+      toast.error('Không thể tải thông tin combo');
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
     
-    setFormData({ ...formData, devices: newDevices });
+    try {
+      const submitData = {
+        name: formData.name,
+        price: formData.price,
+        description: formData.description,
+        images: imageUrls,
+      };
+
+      console.log('Submitting combo data:', submitData);
+
+      if (isNew) {
+        console.log('POST /combo - Creating new combo');
+        await createCombo(submitData);
+        toast.success('Tạo combo thành công');
+      } else {
+        console.log(`PUT /combo/${id} - Updating combo`);
+        await updateCombo(id!, submitData);
+        toast.success('Cập nhật combo thành công');
+      }
+      navigate('/equipment');
+    } catch (error) {
+      console.error('Error saving combo:', error);
+      toast.error('Không thể lưu combo');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAddImage = () => {
@@ -151,19 +133,21 @@ export function ComboFormPage() {
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="Combo Camping Cơ Bản"
                   required
+                  disabled={loading}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="price">Giá/Ngày (VNĐ) *</Label>
+                <Label htmlFor="price">Giá (VNĐ) *</Label>
                 <Input
                   id="price"
                   type="number"
                   value={formData.price}
-                  onChange={(e) => setFormData({ ...formData, price: parseInt(e.target.value) })}
+                  onChange={(e) => setFormData({ ...formData, price: parseInt(e.target.value) || 0 })}
                   placeholder="500000"
                   min="0"
                   required
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -176,103 +160,21 @@ export function ComboFormPage() {
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="Mô tả chi tiết về combo"
                 rows={4}
+                disabled={loading}
               />
             </div>
           </CardContent>
         </Card>
 
-        {/* Devices */}
+        {/* Note: Device management removed - API handles this separately */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Thiết Bị Trong Combo</CardTitle>
-              <Button type="button" onClick={handleAddDevice} size="sm">
-                <Plus className="h-4 w-4 mr-2" />
-                Thêm Thiết Bị
-              </Button>
-            </div>
+            <CardTitle>Lưu ý</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {formData.devices.length === 0 ? (
-              <p className="text-sm text-gray-500 text-center py-4">
-                Chưa có thiết bị nào. Nhấn "Thêm Thiết Bị" để bắt đầu.
-              </p>
-            ) : (
-              formData.devices.map((device, index) => (
-                <div key={device.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                  <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Thiết Bị</Label>
-                      <Select
-                        value={String(device.deviceId)}
-                        onValueChange={(value) =>
-                          handleUpdateDevice(index, 'deviceId', Number(value))
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {mockEquipment.map((equipment) => (
-                            <SelectItem key={equipment.id} value={String(equipment.id)}>
-                              {equipment.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label className="text-xs">Số Lượng</Label>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            handleUpdateDevice(
-                              index,
-                              'quantity',
-                              Math.max(1, device.quantity - 1)
-                            )
-                          }
-                        >
-                          <Minus className="h-3 w-3" />
-                        </Button>
-                        <Input
-                          type="number"
-                          value={device.quantity}
-                          onChange={(e) =>
-                            handleUpdateDevice(index, 'quantity', parseInt(e.target.value) || 1)
-                          }
-                          min="1"
-                          className="w-20 text-center"
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            handleUpdateDevice(index, 'quantity', device.quantity + 1)
-                          }
-                        >
-                          <Plus className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleRemoveDevice(index)}
-                  >
-                    <X className="h-4 w-4 text-red-600" />
-                  </Button>
-                </div>
-              ))
-            )}
+          <CardContent>
+            <p className="text-sm text-gray-600">
+              Quản lý thiết bị trong combo sẽ được thực hiện thông qua API riêng biệt sau khi tạo combo.
+            </p>
           </CardContent>
         </Card>
 
@@ -282,8 +184,8 @@ export function ComboFormPage() {
             <CardTitle>Hình Ảnh</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button type="button" onClick={handleAddImage} variant="outline">
-              <Upload className="h-4 w-4 mr-2" />
+            <Button type="button" onClick={handleAddImage} variant="outline" disabled={loading}>
+              <Plus className="h-4 w-4 mr-2" />
               Thêm URL Hình Ảnh
             </Button>
 
@@ -315,12 +217,12 @@ export function ComboFormPage() {
 
         {/* Submit */}
         <div className="flex justify-end gap-4">
-          <Button type="button" variant="outline" onClick={() => navigate('/equipment')}>
+          <Button type="button" variant="outline" onClick={() => navigate('/equipment')} disabled={loading}>
             Hủy
           </Button>
-          <Button type="submit" className="bg-[#007BFF] hover:bg-[#0056b3]">
+          <Button type="submit" className="bg-[#007BFF] hover:bg-[#0056b3]" disabled={loading}>
             <Save className="h-4 w-4 mr-2" />
-            {isNew ? 'Tạo Combo' : 'Cập Nhật'}
+            {loading ? 'Đang lưu...' : (isNew ? 'Tạo Combo' : 'Cập Nhật')}
           </Button>
         </div>
       </form>

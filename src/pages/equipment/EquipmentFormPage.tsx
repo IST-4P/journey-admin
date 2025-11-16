@@ -1,5 +1,5 @@
 import { ArrowLeft, Plus, Save, Upload, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -13,33 +13,39 @@ import {
   SelectValue,
 } from '../../components/ui/select';
 import { Textarea } from '../../components/ui/textarea';
-import { mockEquipment } from '../../lib/mockData';
+import { getDevice, createDevice, updateDevice, getAllCategories } from '../../lib/services/equipment.service';
+import * as mediaService from '../../lib/services/media.service';
+import { toast } from 'sonner';
+
+interface Category {
+  Id: string;
+  Name: string;
+  LogoUrl?: string;
+  CreatedAt?: string;
+  UpdatedAt?: string;
+}
 
 interface EquipmentFormData {
   name: string;
-  brand: string;
-  category: string;
+  categoryId: string;
   description: string;
   price: number;
   information: string[];
   quantity: number;
-  status: 'available' | 'rented' | 'maintenance';
+  status: string;
   images: string[];
 }
 
 const initialFormData: EquipmentFormData = {
   name: '',
-  brand: '',
-  category: '',
+  categoryId: '',
   description: '',
   price: 0,
   information: [],
   quantity: 1,
-  status: 'available',
+  status: 'AVAILABLE',
   images: [],
 };
-
-const categories = ['Camping', 'Photography', 'Sports', 'Electronics', 'Tools', 'Outdoor', 'Music'];
 
 export function EquipmentFormPage() {
   const { id } = useParams();
@@ -49,36 +55,117 @@ export function EquipmentFormPage() {
   const [formData, setFormData] = useState<EquipmentFormData>(initialFormData);
   const [infoInput, setInfoInput] = useState('');
   const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load categories
+  useEffect(() => {
+    fetchCategories();
+  }, []);
 
   // Load equipment data when editing
   useEffect(() => {
     if (!isNew && id) {
-      const equipment = mockEquipment.find((e) => e.id === Number(id));
-      if (equipment) {
-        setFormData({
-          name: equipment.name,
-          brand: equipment.brand || '',
-          category: equipment.category,
-          description: equipment.description || '',
-          price: equipment.price,
-          information: equipment.information || [],
-          quantity: equipment.quantity || 1,
-          status: equipment.status,
-          images: equipment.images || [],
-        });
-        setImageUrls(equipment.images || []);
-      }
+      fetchDevice();
     }
   }, [id, isNew]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const fetchCategories = async () => {
+    try {
+      // Hardcoded categories as fallback since /device-category returns 404
+      const hardcodedCategories: Category[] = [
+        {
+          Id: 'c0000001-0000-0000-0000-000000000001',
+          Name: 'Laptops',
+          LogoUrl: 'https://example.com/icons/laptop.png'
+        },
+        {
+          Id: 'c0000002-0000-0000-0000-000000000002',
+          Name: 'Peripherals (Phụ kiện)',
+          LogoUrl: 'https://example.com/icons/mouse.png'
+        },
+        {
+          Id: 'c0000003-0000-0000-0000-000000000003',
+          Name: 'Displays (Màn hình)',
+          LogoUrl: 'https://example.com/icons/monitor.png'
+        },
+        {
+          Id: 'c0000100-0000-0000-0000-000000000100',
+          Name: 'Dụng Cụ Outdoor (Cắm Trại)',
+          LogoUrl: 'https://example.com/icons/outdoor.png'
+        }
+      ];
+      
+      console.log('Using hardcoded categories:', hardcodedCategories);
+      setCategories(hardcodedCategories);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+      toast.error('Không thể tải danh sách danh mục');
+    }
+  };
+
+  const fetchDevice = async () => {
+    if (!id) return;
+    setLoading(true);
+    try {
+      const response = await getDevice(id);
+      console.log('Device form response:', response);
+      const device = response;
+      setFormData({
+        name: device.name || '',
+        categoryId: device.categoryId || '',
+        description: device.description || '',
+        price: device.price || 0,
+        information: device.information || [],
+        quantity: device.quantity || 1,
+        status: device.status || 'AVAILABLE',
+        images: device.images || [],
+      });
+      setImageUrls(device.images || []);
+    } catch (error) {
+      console.error('Error fetching device:', error);
+      toast.error('Không thể tải thông tin thiết bị');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const submitData = {
-      ...formData,
-      images: imageUrls,
-    };
-    console.log(`${isNew ? 'Create' : 'Update'} equipment data:`, submitData);
-    navigate('/equipment');
+    setLoading(true);
+    
+    try {
+      const submitData = {
+        name: formData.name,
+        categoryId: formData.categoryId,
+        status: formData.status,
+        price: formData.price,
+        description: formData.description,
+        information: formData.information,
+        quantity: formData.quantity,
+        images: imageUrls,
+      };
+
+      console.log('Submitting device data:', submitData);
+
+      if (isNew) {
+        console.log('POST /device - Creating new device');
+        await createDevice(submitData);
+        toast.success('Tạo thiết bị thành công');
+      } else {
+        console.log(`PUT /device/${id} - Updating device`);
+        await updateDevice(id!, submitData);
+        toast.success('Cập nhật thiết bị thành công');
+      }
+      navigate('/equipment');
+    } catch (error) {
+      console.error('Error saving device:', error);
+      toast.error('Không thể lưu thiết bị');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAddInfo = () => {
@@ -98,10 +185,43 @@ export function EquipmentFormPage() {
     });
   };
 
-  const handleAddImage = () => {
-    const url = prompt('Nhập URL hình ảnh:');
-    if (url && url.trim()) {
-      setImageUrls([...imageUrls, url.trim()]);
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploadingImage(true);
+
+    try {
+      // Upload multiple files
+      const uploadPromises = Array.from(files).map(async (file) => {
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+          throw new Error(`${file.name} không phải là file ảnh`);
+        }
+
+        // Validate file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+          throw new Error(`${file.name} vượt quá 5MB`);
+        }
+
+        // Upload and get URL
+        const url = await mediaService.uploadImage(file);
+        return url;
+      });
+
+      const uploadedUrls = await Promise.all(uploadPromises);
+      setImageUrls([...imageUrls, ...uploadedUrls]);
+      toast.success(`Đã upload ${uploadedUrls.length} ảnh thành công`);
+
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (error: any) {
+      console.error('Error uploading images:', error);
+      toast.error(error.message || 'Không thể upload ảnh');
+    } finally {
+      setIsUploadingImage(false);
     }
   };
 
@@ -136,34 +256,26 @@ export function EquipmentFormPage() {
                   id="name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Máy ảnh Canon EOS 90D"
+                  placeholder="Dell XPS 15"
                   required
+                  disabled={loading}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="brand">Hãng</Label>
-                <Input
-                  id="brand"
-                  value={formData.brand}
-                  onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                  placeholder="Canon"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="category">Danh Mục *</Label>
+                <Label htmlFor="categoryId">Danh Mục *</Label>
                 <Select
-                  value={formData.category}
-                  onValueChange={(value) => setFormData({ ...formData, category: value })}
+                  value={formData.categoryId}
+                  onValueChange={(value) => setFormData({ ...formData, categoryId: value })}
+                  disabled={loading}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Chọn danh mục" />
                   </SelectTrigger>
                   <SelectContent>
-                    {categories.map((cat) => (
-                      <SelectItem key={cat} value={cat}>
-                        {cat}
+                    {categories.map((category) => (
+                      <SelectItem key={category.Id} value={category.Id}>
+                        {category.Name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -171,15 +283,16 @@ export function EquipmentFormPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="price">Giá/Ngày (VNĐ) *</Label>
+                <Label htmlFor="price">Giá (VNĐ) *</Label>
                 <Input
                   id="price"
                   type="number"
                   value={formData.price}
-                  onChange={(e) => setFormData({ ...formData, price: parseInt(e.target.value) })}
+                  onChange={(e) => setFormData({ ...formData, price: parseInt(e.target.value) || 0 })}
                   placeholder="200000"
                   min="0"
                   required
+                  disabled={loading}
                 />
               </div>
 
@@ -189,9 +302,10 @@ export function EquipmentFormPage() {
                   id="quantity"
                   type="number"
                   value={formData.quantity}
-                  onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) })}
-                  min="0"
+                  onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
+                  min="1"
                   required
+                  disabled={loading}
                 />
               </div>
 
@@ -199,17 +313,17 @@ export function EquipmentFormPage() {
                 <Label htmlFor="status">Trạng Thái *</Label>
                 <Select
                   value={formData.status}
-                  onValueChange={(value: EquipmentFormData['status']) =>
-                    setFormData({ ...formData, status: value })
-                  }
+                  onValueChange={(value) => setFormData({ ...formData, status: value })}
+                  disabled={loading}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="available">Có sẵn</SelectItem>
-                    <SelectItem value="rented">Đang cho thuê</SelectItem>
-                    <SelectItem value="maintenance">Bảo trì</SelectItem>
+                    <SelectItem value="AVAILABLE">Có sẵn</SelectItem>
+                    <SelectItem value="In Stock">In Stock</SelectItem>
+                    <SelectItem value="Low Stock">Low Stock</SelectItem>
+                    <SelectItem value="Unavailable">Không có sẵn</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -223,6 +337,7 @@ export function EquipmentFormPage() {
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="Mô tả chi tiết về thiết bị"
                 rows={4}
+                disabled={loading}
               />
             </div>
           </CardContent>
@@ -240,6 +355,7 @@ export function EquipmentFormPage() {
                 onChange={(e) => setInfoInput(e.target.value)}
                 placeholder="Nhập thông tin kỹ thuật..."
                 onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddInfo())}
+                disabled={loading}
               />
               <Button type="button" onClick={handleAddInfo}>
                 Thêm
@@ -274,23 +390,40 @@ export function EquipmentFormPage() {
             <CardTitle>Hình Ảnh</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button type="button" onClick={handleAddImage} variant="outline">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleImageUpload}
+              className="hidden"
+              disabled={isUploadingImage || loading}
+            />
+            <Button 
+              type="button" 
+              onClick={() => fileInputRef.current?.click()} 
+              variant="outline"
+              disabled={isUploadingImage || loading}
+            >
               <Upload className="h-4 w-4 mr-2" />
-              Thêm URL Hình Ảnh
+              {isUploadingImage ? 'Đang upload...' : 'Upload Hình Ảnh'}
             </Button>
+            <p className="text-sm text-gray-500">Chọn một hoặc nhiều ảnh (tối đa 5MB mỗi ảnh)</p>
 
             {imageUrls.length > 0 && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {imageUrls.map((url, index) => (
-                  <div key={index} className="relative group">
-                    <img
-                      src={url}
-                      alt={`Equipment ${index + 1}`}
-                      className="w-full h-24 object-cover rounded-lg"
-                      onError={(e) => {
-                        e.currentTarget.src = 'https://via.placeholder.com/150';
-                      }}
-                    />
+                  <div key={index} className="relative group border rounded-lg overflow-hidden bg-gray-50">
+                    <div className="aspect-square flex items-center justify-center p-2">
+                      <img
+                        src={url}
+                        alt={`Equipment ${index + 1}`}
+                        className="max-w-full max-h-full object-contain"
+                        onError={(e) => {
+                          e.currentTarget.src = 'https://via.placeholder.com/300x200?text=Image+Not+Found';
+                        }}
+                      />
+                    </div>
                     <button
                       type="button"
                       onClick={() => handleRemoveImage(index)}
@@ -307,12 +440,12 @@ export function EquipmentFormPage() {
 
         {/* Submit */}
         <div className="flex justify-end gap-4">
-          <Button type="button" variant="outline" onClick={() => navigate('/equipment')}>
+          <Button type="button" variant="outline" onClick={() => navigate('/equipment')} disabled={loading}>
             Hủy
           </Button>
-          <Button type="submit" className="bg-[#007BFF] hover:bg-[#0056b3]">
+          <Button type="submit" className="bg-[#007BFF] hover:bg-[#0056b3]" disabled={loading}>
             <Save className="h-4 w-4 mr-2" />
-            {isNew ? 'Tạo Thiết Bị' : 'Cập Nhật'}
+            {loading ? 'Đang lưu...' : (isNew ? 'Tạo Thiết Bị' : 'Cập Nhật')}
           </Button>
         </div>
       </form>

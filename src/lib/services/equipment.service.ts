@@ -42,6 +42,15 @@ export const deleteDevice = async (id: string): Promise<void> => {
   await axiosInstance.delete(`/device/${id}`);
 };
 
+// ==================== DEVICE CATEGORY ENDPOINTS ====================
+
+/**
+ * Get all device categories
+ */
+export const getAllCategories = async (): Promise<any> => {
+  return await axiosInstance.get("/device-category");
+};
+
 // ==================== DEVICE FEATURE ENDPOINTS ====================
 
 /**
@@ -118,4 +127,41 @@ export const createModel = async (data: {
  */
 export const deleteModel = async (id: string): Promise<void> => {
   await axiosInstance.delete(`/device-model/${id}`);
+};
+
+// ==================== COMBO ENDPOINTS ====================
+
+/**
+ * Get list of combos with pagination and filters
+ */
+export const getManyCombos = async (params?: any): Promise<any> => {
+  return await axiosInstance.get("/combo", { params });
+};
+
+/**
+ * Get a single combo by ID
+ */
+export const getCombo = async (id: string): Promise<any> => {
+  return await axiosInstance.get(`/combo/${id}`);
+};
+
+/**
+ * Create a new combo
+ */
+export const createCombo = async (data: any): Promise<any> => {
+  return await axiosInstance.post("/combo", data);
+};
+
+/**
+ * Update an existing combo
+ */
+export const updateCombo = async (id: string, data: any): Promise<any> => {
+  return await axiosInstance.put(`/combo/${id}`, data);
+};
+
+/**
+ * Delete a combo
+ */
+export const deleteCombo = async (id: string): Promise<void> => {
+  await axiosInstance.delete(`/combo/${id}`);
 };

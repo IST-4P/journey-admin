@@ -1,23 +1,47 @@
 import { ArrowLeft } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Separator } from '../../components/ui/separator';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '../../components/ui/table';
-import { mockCombos, mockEquipment } from '../../lib/mockData';
+import { getCombo } from '../../lib/services/equipment.service';
+import { Combo } from '../../lib/types';
+import { toast } from 'sonner';
 
 export function ComboDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [combo, setCombo] = useState<Combo | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const combo = mockCombos.find((c) => c.id === Number(id));
+  useEffect(() => {
+    if (id) {
+      fetchCombo();
+    }
+  }, [id]);
+
+  const fetchCombo = async () => {
+    if (!id) return;
+    setLoading(true);
+    try {
+      const response = await getCombo(id);
+      console.log('Combo detail response:', response);
+      setCombo(response);
+    } catch (error) {
+      console.error('Error fetching combo:', error);
+      toast.error('Không thể tải thông tin combo');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">Đang tải...</div>
+      </div>
+    );
+  }
 
   if (!combo) {
     return (
@@ -104,70 +128,12 @@ export function ComboDetailPage() {
                   </div>
                 </>
               )}
-            </CardContent>
-          </Card>
 
-          {/* Devices */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Thiết Bị Trong Combo ({combo.devices.length})</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Thiết Bị</TableHead>
-                    <TableHead>Danh Mục</TableHead>
-                    <TableHead>Số Lượng</TableHead>
-                    <TableHead className="text-right">Giá/Ngày</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {combo.devices.map((device) => {
-                    const equipment = mockEquipment.find((e) => e.id === device.deviceId);
-                    return (
-                      <TableRow key={device.id}>
-                        <TableCell>{device.deviceName}</TableCell>
-                        <TableCell>{equipment?.category || '-'}</TableCell>
-                        <TableCell>{device.quantity}x</TableCell>
-                        <TableCell className="text-right">
-                          {equipment ? formatCurrency(equipment.price) : '-'}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+              <Separator />
 
-              <div className="mt-4 pt-4 border-t">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">
-                    Tổng giá riêng lẻ (ước tính):
-                  </span>
-                  <span className="text-sm">
-                    {formatCurrency(
-                      combo.devices.reduce((sum, device) => {
-                        const equipment = mockEquipment.find((e) => e.id === device.deviceId);
-                        return sum + (equipment ? equipment.price * device.quantity : 0);
-                      }, 0)
-                    )}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center mt-2">
-                  <span>Giá combo:</span>
-                  <span className="text-lg text-[#007BFF]">{formatCurrency(combo.price)}</span>
-                </div>
-                <div className="flex justify-between items-center mt-2 text-green-600">
-                  <span>Tiết kiệm:</span>
-                  <span>
-                    {formatCurrency(
-                      combo.devices.reduce((sum, device) => {
-                        const equipment = mockEquipment.find((e) => e.id === device.deviceId);
-                        return sum + (equipment ? equipment.price * device.quantity : 0);
-                      }, 0) - combo.price
-                    )}
-                  </span>
-                </div>
+              <div>
+                <div className="text-sm text-gray-600 mb-1">Số Thiết Bị</div>
+                <div className="text-lg">{combo.deviceCount || 0}</div>
               </div>
             </CardContent>
           </Card>
@@ -183,7 +149,7 @@ export function ComboDetailPage() {
             <CardContent className="space-y-4">
               <div>
                 <div className="text-sm text-gray-600 mb-1">ID</div>
-                <div className="text-sm">{combo.id}</div>
+                <div className="text-sm font-mono">{combo.id}</div>
               </div>
 
               <Separator />

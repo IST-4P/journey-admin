@@ -187,28 +187,61 @@ export function createWebSocket(path: string, opts?: { reconnect?: boolean; debu
 }
 
 // Convenience helpers
-function createSocketIoClient(path: string, options?: { debug?: boolean }) {
+function createSocketIoClient(
+  path: string,
+  options?: {
+    debug?: boolean;
+    query?: Record<string, string | number | boolean | undefined>;
+    includeToken?: boolean;
+  }
+) {
   if (!isWsEnabled()) {
     return createWebSocket(path, { reconnect: true, debug: options?.debug });
   }
 
   const base = getSocketIoBase();
-  const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-  const authToken = token ? `Bearer ${token}` : undefined;
   const namespaceUrl = new URL(path.startsWith('/') ? path : `/${path}`, base).toString();
+
+  // Build query params (không bao gồm token vì dùng httpOnly cookie)
+  const query: Record<string, string> = {};
+  if (options?.query) {
+    Object.entries(options.query).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        query[key] = String(value);
+      }
+    });
+  }
+
+  if (options?.debug) {
+    console.log('[WS Client] 🔌 Creating Socket.IO connection:');
+    console.log('[WS Client] 📍 Namespace URL:', namespaceUrl);
+    console.log('[WS Client] 🍪 Using httpOnly cookies for authentication');
+    console.log('[WS Client] 📋 Query params:', query);
+  }
 
   const socket: Socket = io(namespaceUrl, {
     path: '/socket.io',
-    withCredentials: true,
-    transports: ['websocket'],
-    auth: authToken ? { token: authToken } : undefined,
-    query: token ? { token } : undefined,
+    withCredentials: true, // ✅ Tự động gửi httpOnly cookies (accessToken, refreshToken)
+    transports: ['websocket', 'polling'], // ✅ Giống test-chat.html - có fallback
+    query: Object.keys(query).length ? query : undefined,
     autoConnect: true
   });
 
   if (options?.debug) {
     socket.onAny((event, ...args) => {
-      console.log('[WS]', path, 'event:', event, 'data:', ...args);
+      console.log('[WS] Event received:', path, 'event:', event, 'data:', ...args);
+    });
+    
+    socket.on('connect', () => {
+      console.log('[WS] Connected! Socket ID:', socket.id);
+    });
+    
+    socket.on('disconnect', (reason) => {
+      console.log('[WS] Disconnected:', reason);
+    });
+    
+    socket.on('connect_error', (error) => {
+      console.error('[WS] Connection error:', error.message, error);
     });
   }
 
@@ -217,7 +250,6 @@ function createSocketIoClient(path: string, options?: { debug?: boolean }) {
       socket.emit('message', payload);
     },
     emit(event: string, data?: any) {
-      console.log(`[WS] /chat emit: ${event}`, data);
       socket.emit(event, data);
     },
     close() {
@@ -241,4 +273,11 @@ export function connectChatSocket(options?: { debug?: boolean }) {
 
 export function connectPaymentSocket(options?: { debug?: boolean }) {
   return createSocketIoClient('/payment', options);
+}
+
+export function connectComplaintSocket(complaintId: string, options?: { debug?: boolean }) {
+  return createSocketIoClient('/complaint', {
+    debug: options?.debug,
+    query: { complaintId },
+  });
 }
