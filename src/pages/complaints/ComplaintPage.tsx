@@ -4,8 +4,10 @@ import {
   MoreVertical,
   Loader2,
   AlertCircle,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { io, Socket } from 'socket.io-client';
 import { Pagination } from '../../components/common/Pagination';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
@@ -20,7 +22,7 @@ import {
 } from '../../components/ui/dropdown-menu';
 import { complaintService } from '../../lib/services/complaint.service';
 import { Complaint, ComplaintMessage } from '../../lib/types/complaint';
-import { connectComplaintSocket, WSClient } from '../../lib/utils/ws-client';
+import { uploadImage } from '../../lib/services/media.service';
 import { toast } from 'sonner';
 
 const COMPLAINTS_PER_PAGE = 15;
@@ -48,14 +50,17 @@ export function ComplaintPage() {
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false);
   const [messageInput, setMessageInput] = useState('');
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
-  // WebSocket
-  const [complaintSocket, setComplaintSocket] = useState<WSClient | null>(null);
+  // WebSocket - Direct Socket.IO like ChatPage
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
 
   // Refs
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const isFetchingMessagesRef = useRef(false);
   const shouldStickToBottomRef = useRef(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load complaints
   const loadComplaints = useCallback(async (page: number, search: string = '') => {
@@ -188,57 +193,86 @@ export function ComplaintPage() {
 
   // Send message via WebSocket
   const handleSendMessage = useCallback(() => {
+    if (!messageInput.trim() || !selectedComplaint || !socket) {
+      if (!socket) {
+        toast.error('WebSocket chưa kết nối');
+      }
+      return;
+    }
+
+    if (!socket.connected) {
+      toast.error('WebSocket đã ngắt kết nối, vui lòng đợi...');
+      return;
+    }
+
+    const content = messageInput.trim();
+    setMessageInput('');
+
+    // Payload giống test-complaint.html
+    const message = {
+      complaintId: selectedComplaint.id,
+      messageType: 'TEXT',
+      content: content,
+    };
+
+    console.log('[Complaint] 📤 Sending TEXT message:', message);
+    socket.emit('sendComplaintMessage', message);
+
+    // Scroll to bottom
+    requestAnimationFrame(() => {
+      if (messagesScrollRef.current) {
+        messagesScrollRef.current.scrollTop = messagesScrollRef.current.scrollHeight;
+      }
+    });
+  }, [messageInput, selectedComplaint, socket]);
+
+  // Handle image upload and send IMAGE message
+  const handleImageUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !selectedComplaint || !socket) {
+      if (!socket) {
+        toast.error('WebSocket chưa kết nối');
+      }
+      return;
+    }
+
+    if (!socket.connected) {
+      toast.error('WebSocket đã ngắt kết nối, vui lòng đợi...');
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('Vui lòng chọn file hình ảnh');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Kích thước ảnh không được vượt quá 5MB');
+      return;
+    }
+
+    setIsUploadingImage(true);
     try {
-      console.log('[ComplaintPage] handleSendMessage called');
-      console.log('[ComplaintPage] messageInput:', messageInput);
-      console.log('[ComplaintPage] selectedComplaint:', selectedComplaint);
-      console.log('[ComplaintPage] complaintSocket:', complaintSocket);
+      console.log('[Complaint] 📤 Uploading image:', file.name);
       
-      if (!messageInput.trim() || !selectedComplaint) {
-        console.log('[ComplaintPage] Cannot send - missing input or complaint');
-        return;
-      }
+      // Upload image using presigned URL
+      const imageUrl = await uploadImage(file);
+      
+      console.log('[Complaint] ✅ Image uploaded:', imageUrl);
 
-      if (!complaintSocket) {
-        toast.error('Đang kết nối WebSocket, vui lòng thử lại');
-        console.log('[ComplaintPage] WebSocket not connected yet');
-        return;
-      }
-
-      const content = messageInput.trim();
-      setMessageInput('');
-
-      // Prepare WebSocket payload
-      const payload = {
+      // Send IMAGE message via WebSocket
+      const message = {
         complaintId: selectedComplaint.id,
-        content,
-        messageType: 'TEXT',
+        messageType: 'IMAGE',
+        content: imageUrl,
       };
 
-      console.log('[ComplaintPage] Sending message via WebSocket:', payload);
+      console.log('[Complaint] 📤 Sending IMAGE message:', message);
+      socket.emit('sendComplaintMessage', message);
 
-      // Send via WebSocket - complaint namespace uses default 'message' event or direct send
-      if (complaintSocket.send) {
-        complaintSocket.send(payload);
-      } else if (complaintSocket.emit) {
-        complaintSocket.emit('message', payload);
-      } else {
-        console.error('[ComplaintPage] Socket does not support send or emit method');
-        return;
-      }
-      
-      // Optimistically add message to UI
-      const optimisticMessage: ComplaintMessage = {
-        id: `temp-${Date.now()}`,
-        complaintId: selectedComplaint.id,
-        senderId: 'ADMIN',
-        messageType: 'TEXT',
-        content,
-        createdAt: new Date().toISOString(),
-      };
-
-      setMessages((prev) => [...prev, optimisticMessage]);
-      shouldStickToBottomRef.current = true;
+      toast.success('Đã gửi hình ảnh');
 
       // Scroll to bottom
       requestAnimationFrame(() => {
@@ -247,45 +281,30 @@ export function ComplaintPage() {
         }
       });
     } catch (error) {
-      console.error('[ComplaintPage] Error sending message:', error);
-      toast.error('Lỗi khi gửi tin nhắn');
+      console.error('[Complaint] ❌ Error uploading image:', error);
+      toast.error('Lỗi khi tải lên hình ảnh');
+    } finally {
+      setIsUploadingImage(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
-  }, [messageInput, selectedComplaint, complaintSocket]);
+  }, [selectedComplaint, socket]);
 
-  // Handle incoming message from WebSocket
-  const handleIncomingMessage = useCallback((data: ComplaintMessage) => {
-    console.log('[ComplaintPage] ✅ Received message event:', data);
+  // Handle incoming message from WebSocket - Giống ChatPage
+  const handleNewMessage = useCallback((data: ComplaintMessage) => {
+    console.log('[Complaint] 📨 Received newComplaintMessage:', data);
     
     setMessages((prev) => {
-      // Check if message already exists by real ID (prevent duplicates)
-      const existingIndex = prev.findIndex((msg) => msg.id === data.id);
-      if (existingIndex !== -1) {
-        console.log('[ComplaintPage] Message already exists (real ID), skipping');
+      // Tránh duplicate
+      if (prev.some((msg) => msg.id === data.id)) {
         return prev;
       }
-
-      // Check if this is a response to our optimistic message
-      const optimisticIndex = prev.findIndex(
-        (msg) => 
-          msg.id.startsWith('temp-') && 
-          msg.content === data.content &&
-          msg.complaintId === data.complaintId
-      );
-
-      if (optimisticIndex !== -1) {
-        console.log('[ComplaintPage] ✅ Replacing optimistic message with real one');
-        // Replace optimistic message with real one from backend
-        const updated = [...prev];
-        updated[optimisticIndex] = data;
-        return updated;
-      }
-
-      // New message from user
-      console.log('[ComplaintPage] ✅ Adding new message from user');
       return [...prev, data];
     });
 
-    // Scroll to bottom if already at bottom
+    // Scroll to bottom nếu đang ở cuối
     if (shouldStickToBottomRef.current) {
       requestAnimationFrame(() => {
         if (messagesScrollRef.current) {
@@ -295,62 +314,61 @@ export function ComplaintPage() {
     }
   }, []);
 
-  // Initialize WebSocket
+  // Initialize WebSocket - Giống ChatPage
   useEffect(() => {
     if (!selectedComplaint?.id) {
-      // Clear socket if no complaint selected
-      if (complaintSocket) {
-        complaintSocket.close();
-        setComplaintSocket(null);
-      }
       return;
     }
 
-    console.log('[ComplaintPage] 🔌 Connecting to complaint:', selectedComplaint.id);
-    console.log('[ComplaintPage] 🍪 Using httpOnly cookies for auth');
+    const wsUrl = import.meta.env.VITE_WS_URL || 'http://localhost:3000';
+    const namespace = '/complaint';
 
-    const socket = connectComplaintSocket(selectedComplaint.id, { debug: true });
-    setComplaintSocket(socket);
+    console.log('[Complaint] 🔌 Connecting WebSocket to:', `${wsUrl}${namespace}`);
+    console.log('[Complaint] 🍪 Using httpOnly cookies (sent automatically by browser)');
+    console.log('[Complaint] 📋 Complaint ID:', selectedComplaint.id);
 
-    // Listen for new messages - try multiple possible event names
-    const unsubscribeMessage = socket.on('message', (data) => {
-      console.log('[ComplaintPage] ✅ Received message event:', data);
-      handleIncomingMessage(data);
-    });
-    
-    const unsubscribeNewMessage = socket.on('newMessage', (data) => {
-      console.log('[ComplaintPage] ✅ Received newMessage event:', data);
-      handleIncomingMessage(data);
-    });
-    
-    const unsubscribeComplaintMessage = socket.on('complaintMessage', (data) => {
-      console.log('[ComplaintPage] ✅ Received complaintMessage event:', data);
-      handleIncomingMessage(data);
-    });
-    
-    // Listen for connection events
-    const unsubConnect = socket.on('connect', () => {
-      console.log('[ComplaintPage] ✅ WebSocket connected for complaint:', selectedComplaint.id);
-    });
-    
-    const unsubDisconnect = socket.on('disconnect', () => {
-      console.log('[ComplaintPage] ❌ WebSocket disconnected');
-    });
-    
-    const unsubError = socket.on('error', (error: any) => {
-      console.error('[ComplaintPage] ❌ WebSocket error:', error);
-    });
-
-    return () => {
-      unsubscribeMessage();
-      unsubscribeNewMessage();
-      unsubscribeComplaintMessage();
-      unsubConnect();
-      unsubDisconnect();
-      unsubError();
-      socket.close();
+    // Socket.IO options với query parameter complaintId
+    const socketOptions: any = {
+      withCredentials: true, // Browser tự động gửi httpOnly cookies
+      transports: ['websocket', 'polling'],
+      query: {
+        complaintId: selectedComplaint.id,
+      },
     };
-  }, [selectedComplaint?.id, handleIncomingMessage]);
+
+    console.log('[Complaint] ✅ Browser will automatically send httpOnly cookies with requests');
+
+    const socketInstance = io(`${wsUrl}${namespace}`, socketOptions);
+    setSocket(socketInstance);
+
+    // Lắng nghe events
+    socketInstance.on('connect', () => {
+      console.log('[Complaint] ✅ WebSocket connected! Socket ID:', socketInstance.id);
+      setIsSocketConnected(true);
+    });
+
+    socketInstance.on('disconnect', (reason) => {
+      console.log('[Complaint] ❌ WebSocket disconnected. Reason:', reason);
+      setIsSocketConnected(false);
+    });
+
+    socketInstance.on('connect_error', (error) => {
+      console.error('[Complaint] ❌ Connection error:', error.message);
+      setIsSocketConnected(false);
+    });
+
+    // Lắng nghe event 'newComplaintMessage' - QUAN TRỌNG
+    socketInstance.on('newComplaintMessage', (data: ComplaintMessage) => {
+      console.log('[Complaint] 📨 New complaint message:', data);
+      handleNewMessage(data);
+    });
+
+    // Cleanup
+    return () => {
+      console.log('[Complaint] 🔌 Disconnecting WebSocket...');
+      socketInstance.disconnect();
+    };
+  }, [selectedComplaint?.id, handleNewMessage]);
 
   // Load complaints on mount
   useEffect(() => {
@@ -620,7 +638,22 @@ export function ComplaintPage() {
                                     : 'bg-white text-gray-900 rounded-bl-none border border-gray-200'
                                 }`}
                               >
-                                <p className="break-words text-sm">{message.content}</p>
+                                {message.messageType === 'IMAGE' ? (
+                                  <div className="space-y-2">
+                                    <img
+                                      src={message.content}
+                                      alt="Complaint attachment"
+                                      className="max-w-full max-h-64 rounded-lg cursor-pointer object-contain"
+                                      onClick={() => window.open(message.content, '_blank')}
+                                      onError={(e) => {
+                                        e.currentTarget.src = '';
+                                        e.currentTarget.alt = '❌ Lỗi tải hình ảnh';
+                                      }}
+                                    />
+                                  </div>
+                                ) : (
+                                  <p className="break-words text-sm">{message.content}</p>
+                                )}
                               </div>
                               <div className={`flex items-center gap-1 mt-1 px-2 ${
                                 isFromAdmin ? 'self-end' : 'self-start'
@@ -651,6 +684,31 @@ export function ComplaintPage() {
               {/* Message Input - Fixed at Bottom */}
               <div className="p-4 border-t bg-white flex-shrink-0">
                 <div className="flex items-center gap-2">
+                  {/* Hidden file input */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                  />
+                  
+                  {/* Image upload button */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploadingImage || !isSocketConnected}
+                    className="text-gray-500 hover:text-[#007BFF] flex-shrink-0"
+                    title="Gửi hình ảnh"
+                  >
+                    {isUploadingImage ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <ImageIcon className="h-5 w-5" />
+                    )}
+                  </Button>
+
                   <Input
                     placeholder="Nhập tin nhắn trả lời..."
                     value={messageInput}
@@ -661,16 +719,25 @@ export function ComplaintPage() {
                         handleSendMessage();
                       }
                     }}
+                    disabled={isUploadingImage}
                     className="flex-1 rounded-full border-gray-300 focus:border-[#007BFF]"
                   />
                   <Button
                     onClick={handleSendMessage}
-                    disabled={!messageInput.trim()}
+                    disabled={!messageInput.trim() || !isSocketConnected || isUploadingImage}
                     className="bg-[#007BFF] hover:bg-[#0056b3] disabled:bg-gray-300 rounded-full h-10 w-10 p-0 flex-shrink-0"
                   >
                     <Send className="h-4 w-4" />
                   </Button>
                 </div>
+                
+                {/* WebSocket Status */}
+                {!isSocketConnected && (
+                  <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
+                    <div className="h-2 w-2 rounded-full bg-red-500" />
+                    <span>Đang kết nối WebSocket...</span>
+                  </div>
+                )}
               </div>
             </>
           ) : (
