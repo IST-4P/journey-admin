@@ -82,8 +82,10 @@ export function ComplaintPage() {
 
       console.log('[ComplaintPage] Raw response:', response);
 
-      const complaints = response.complaints || [];
-      const totalPages = response.totalPages || 1;
+      // Xử lý trường hợp API trả về empty object hoặc không có complaints array
+      // Ví dụ: { data: {}, message: "Error.ComplaintNotFound", statusCode: 404 }
+      const complaints = response?.complaints || [];
+      const totalPages = response?.totalPages || 1;
 
       console.log('[ComplaintPage] Complaints array:', complaints);
 
@@ -99,9 +101,18 @@ export function ComplaintPage() {
       setComplaints(filteredComplaints);
       setComplaintsTotalPages(totalPages);
       console.log('[ComplaintPage] Loaded complaints:', filteredComplaints);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load complaints:', error);
-      toast.error('Không thể tải danh sách khiếu nại');
+      
+      // Nếu lỗi 404 (ComplaintNotFound), set empty array thay vì hiển thị toast error
+      if (error?.response?.status === 404 || error?.statusCode === 404) {
+        console.log('[ComplaintPage] No complaints found (404), showing empty state');
+        setComplaints([]);
+        setComplaintsTotalPages(1);
+      } else {
+        // Các lỗi khác mới hiển thị toast
+        toast.error('Không thể tải danh sách khiếu nại');
+      }
     } finally {
       setIsLoadingComplaints(false);
     }
