@@ -1,5 +1,5 @@
 // Enums matching Prisma schema
-export type ComplaintStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+export type ComplaintStatus = 'OPEN' | 'IN_PROGRESS' | 'CLOSED';
 export type ComplaintMessageType = 'TEXT' | 'IMAGE';
 
 export interface ComplaintMessage {

@@ -5,6 +5,8 @@ import {
   Loader2,
   AlertCircle,
   Image as ImageIcon,
+  Filter,
+  Check,
 } from 'lucide-react';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
@@ -40,6 +42,7 @@ export function ComplaintPage() {
   const [complaintsPage, setComplaintsPage] = useState(1);
   const [complaintsTotalPages, setComplaintsTotalPages] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>(''); // '' = All, 'OPEN', 'IN_PROGRESS', 'CLOSED'
   const [isLoadingComplaints, setIsLoadingComplaints] = useState(false);
 
   // Complaint messages state
@@ -63,13 +66,19 @@ export function ComplaintPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load complaints
-  const loadComplaints = useCallback(async (page: number, search: string = '') => {
+  const loadComplaints = useCallback(async (page: number, search: string = '', status: string = '') => {
     setIsLoadingComplaints(true);
     try {
-      const response = await complaintService.getManyComplaints({
+      const params: any = {
         page,
         limit: COMPLAINTS_PER_PAGE,
-      });
+      };
+      
+      if (status) {
+        params.status = status;
+      }
+      
+      const response = await complaintService.getManyComplaints(params);
 
       console.log('[ComplaintPage] Raw response:', response);
 
@@ -372,8 +381,8 @@ export function ComplaintPage() {
 
   // Load complaints on mount
   useEffect(() => {
-    loadComplaints(complaintsPage, searchQuery);
-  }, [complaintsPage, searchQuery, loadComplaints]);
+    loadComplaints(complaintsPage, searchQuery, statusFilter);
+  }, [complaintsPage, searchQuery, statusFilter, loadComplaints]);
 
   // Load messages when complaint is selected
   useEffect(() => {
@@ -407,14 +416,6 @@ export function ComplaintPage() {
     return date.toLocaleDateString('vi-VN');
   };
 
-  const getInitials = (name: string) => {
-    const words = name.split(' ');
-    if (words.length >= 2) {
-      return words[0][0] + words[words.length - 1][0];
-    }
-    return name.substring(0, 2);
-  };
-
   const isMessageFromAdmin = (message: ComplaintMessage) => {
     // Admin messages have senderId that's not the complaint's userId
     // Or check if it's the optimistic message
@@ -426,7 +427,6 @@ export function ComplaintPage() {
     const statusMap: Record<string, { label: string; className: string }> = {
       OPEN: { label: 'Mở', className: 'bg-blue-100 text-blue-800' },
       IN_PROGRESS: { label: 'Đang xử lý', className: 'bg-yellow-100 text-yellow-800' },
-      RESOLVED: { label: 'Đã giải quyết', className: 'bg-green-100 text-green-800' },
       CLOSED: { label: 'Đã đóng', className: 'bg-gray-100 text-gray-800' },
     };
     const config = statusMap[status] || { label: status, className: 'bg-gray-100 text-gray-800' };
@@ -437,9 +437,62 @@ export function ComplaintPage() {
     );
   };
 
+  // Update complaint status
+  const handleUpdateStatus = useCallback(async (complaintId: string, newStatus: 'OPEN' | 'IN_PROGRESS' | 'CLOSED') => {
+    try {
+      await complaintService.updateComplaintStatus({
+        id: complaintId,
+        status: newStatus,
+      });
+
+      // Update local state
+      setComplaints((prev) =>
+        prev.map((c) => (c.id === complaintId ? { ...c, status: newStatus } : c))
+      );
+
+      if (selectedComplaint?.id === complaintId) {
+        setSelectedComplaint((prev) => (prev ? { ...prev, status: newStatus } : null));
+      }
+
+      toast.success(`Đã cập nhật trạng thái thành "${getStatusLabel(newStatus)}"`);
+    } catch (error) {
+      console.error('Failed to update complaint status:', error);
+      toast.error('Không thể cập nhật trạng thái');
+    }
+  }, [selectedComplaint]);
+
+  const getStatusLabel = (status: string) => {
+    const map: Record<string, string> = {
+      OPEN: 'Mở',
+      IN_PROGRESS: 'Đang xử lý',
+      CLOSED: 'Đã đóng',
+    };
+    return map[status] || status;
+  };
+
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-semibold">Quản Lý Khiếu Nại</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-semibold">Quản Lý Khiếu Nại</h2>
+        
+        {/* Status Filter */}
+        <div className="flex items-center gap-2">
+          <Filter className="h-4 w-4 text-gray-500" />
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setComplaintsPage(1);
+            }}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#007BFF]"
+          >
+            <option value="">Tất cả trạng thái</option>
+            <option value="OPEN">Mở</option>
+            <option value="IN_PROGRESS">Đang xử lý</option>
+            <option value="CLOSED">Đã đóng</option>
+          </select>
+        </div>
+      </div>
 
       <div
         className="grid grid-cols-1 lg:grid-cols-3 gap-6"
@@ -476,16 +529,25 @@ export function ComplaintPage() {
             ) : (
               <ScrollArea className="h-full">
                 <div className="divide-y">
-                  {complaints.map((complaint) => (
-                    <button
-                      key={complaint.id}
-                      onClick={() => setSelectedComplaint(complaint)}
-                      className={`w-full p-4 text-left hover:bg-gray-50 transition-colors relative ${
-                        selectedComplaint?.id === complaint.id
-                          ? 'bg-blue-50 border-l-4 border-[#007BFF]'
-                          : ''
-                      }`}
-                    >
+                  {complaints.map((complaint) => {
+                    // Màu border-left theo status
+                    const borderColor = 
+                      complaint.status === 'OPEN' ? 'border-blue-500' :
+                      complaint.status === 'IN_PROGRESS' ? 'border-yellow-500' :
+                      'border-gray-500';
+                    
+                    const bgColor = 
+                      selectedComplaint?.id === complaint.id ? 'bg-blue-50' :
+                      complaint.status === 'OPEN' ? 'hover:bg-blue-50/50' :
+                      complaint.status === 'IN_PROGRESS' ? 'hover:bg-yellow-50/50' :
+                      'hover:bg-gray-50';
+                    
+                    return (
+                      <button
+                        key={complaint.id}
+                        onClick={() => setSelectedComplaint(complaint)}
+                        className={`w-full p-4 text-left transition-colors relative border-l-4 ${borderColor} ${bgColor}`}
+                      >
                       <div className="flex items-start gap-3">
                         <div className="relative flex-shrink-0">
                           <Avatar className="h-12 w-12">
@@ -512,7 +574,8 @@ export function ComplaintPage() {
                         </div>
                       </div>
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               </ScrollArea>
             )}
@@ -566,8 +629,33 @@ export function ComplaintPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem>Đánh dấu đã giải quyết</DropdownMenuItem>
-                    <DropdownMenuItem>Đóng khiếu nại</DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => handleUpdateStatus(selectedComplaint.id, 'OPEN')}
+                      disabled={selectedComplaint.status === 'OPEN'}
+                      className="cursor-pointer"
+                    >
+                      {selectedComplaint.status === 'OPEN' && <Check className="h-4 w-4 mr-2" />}
+                      {selectedComplaint.status !== 'OPEN' && <div className="h-4 w-4 mr-2" />}
+                      Đánh dấu Mở
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => handleUpdateStatus(selectedComplaint.id, 'IN_PROGRESS')}
+                      disabled={selectedComplaint.status === 'IN_PROGRESS'}
+                      className="cursor-pointer"
+                    >
+                      {selectedComplaint.status === 'IN_PROGRESS' && <Check className="h-4 w-4 mr-2" />}
+                      {selectedComplaint.status !== 'IN_PROGRESS' && <div className="h-4 w-4 mr-2" />}
+                      Đánh dấu Đang xử lý
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => handleUpdateStatus(selectedComplaint.id, 'CLOSED')}
+                      disabled={selectedComplaint.status === 'CLOSED'}
+                      className="cursor-pointer"
+                    >
+                      {selectedComplaint.status === 'CLOSED' && <Check className="h-4 w-4 mr-2" />}
+                      {selectedComplaint.status !== 'CLOSED' && <div className="h-4 w-4 mr-2" />}
+                      Đánh dấu Đã đóng
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>

@@ -4,18 +4,33 @@ import axiosInstance from '../axios';
 export const complaintService = {
   /**
    * Lấy danh sách complaints (Many Complaints API)
-   * Endpoint: GET /complaint?limit=10&page=1
-   * @param params - page và limit
+   * Endpoint: GET /complaint?limit=10&page=1&status=OPEN
+   * @param params - page, limit, status
    * @returns Danh sách complaints
    */
   getManyComplaints: async (params?: {
     page?: number;
     limit?: number;
+    status?: string;
   }): Promise<ComplaintsApiResponse['data']> => {
     const response = await axiosInstance.get<ComplaintsApiResponse>(
       '/complaint',
       { params }
     );
+    return response as any; // Interceptor already unwrapped
+  },
+
+  /**
+   * Cập nhật status của complaint
+   * Endpoint: PUT /complaint
+   * @param data - id và status mới
+   * @returns Complaint đã cập nhật
+   */
+  updateComplaintStatus: async (data: {
+    id: string;
+    status: 'OPEN' | 'IN_PROGRESS' | 'CLOSED';
+  }): Promise<any> => {
+    const response = await axiosInstance.put('/complaint', data);
     return response as any; // Interceptor already unwrapped
   },
 
