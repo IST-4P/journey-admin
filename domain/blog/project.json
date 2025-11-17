@@ -1,7 +1,0 @@
-{
-  "name": "domain-blog",
-  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
-  "sourceRoot": "libs/domain/blog/src",
-  "projectType": "library",
-  "tags": ["type:domain", "scope:blog"]
-}

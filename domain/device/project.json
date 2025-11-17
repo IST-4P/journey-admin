@@ -1,7 +1,0 @@
-{
-  "name": "domain-device",
-  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
-  "sourceRoot": "libs/domain/device/src",
-  "projectType": "library",
-  "tags": ["type:domain", "scope:device"]
-}

@@ -1,7 +1,0 @@
-{
-  "name": "domain-booking",
-  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
-  "sourceRoot": "libs/domain/booking/src",
-  "projectType": "library",
-  "tags": ["type:domain", "scope:booking"]
-}

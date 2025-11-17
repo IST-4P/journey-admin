@@ -1,28 +1,32 @@
 import {
+  Loader2,
+  MoreVertical,
+  Paperclip,
+  Search,
   Send,
   Trash,
-  Search,
-  Paperclip,
-  MoreVertical,
-  Loader2,
-} from 'lucide-react';
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { io, Socket } from 'socket.io-client';
-import { Pagination } from '../../components/common/Pagination';
-import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
-import { Badge } from '../../components/ui/badge';
-import { Button } from '../../components/ui/button';
-import { Input } from '../../components/ui/input';
-import { ScrollArea } from '../../components/ui/scroll-area';
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { io, Socket } from "socket.io-client";
+import { toast } from "sonner";
+import { Pagination } from "../../components/common/Pagination";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "../../components/ui/avatar";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '../../components/ui/dropdown-menu';
-import { chatService } from '../../lib/services/chat.service';
-import { Conversation, ChatMessage } from '../../lib/types/chat';
-import { toast } from 'sonner';
+} from "../../components/ui/dropdown-menu";
+import { Input } from "../../components/ui/input";
+import { ScrollArea } from "../../components/ui/scroll-area";
+import { chatService } from "../../lib/services/chat.service";
+import { ChatMessage, Conversation } from "../../lib/types/chat";
 
 const CONVERSATIONS_PER_PAGE = 15;
 const MESSAGES_PER_PAGE = 20;
@@ -30,30 +34,38 @@ const MESSAGES_PER_PAGE = 20;
 // Extended Conversation type for UI state
 interface ConversationWithState extends Conversation {
   lastMessage?: string;
-  lastMessageDate?: string;
+  lastMessageAt?: string;
   unread?: number;
 }
 
 export function ChatPage() {
   // Conversations state
-  const [conversations, setConversations] = useState<ConversationWithState[]>([]);
+  const [conversations, setConversations] = useState<ConversationWithState[]>(
+    []
+  );
   const [conversationsPage, setConversationsPage] = useState(1);
   const [conversationsTotalPages, setConversationsTotalPages] = useState(1);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [isLoadingConversations, setIsLoadingConversations] = useState(false);
 
   // Chat state
-  const [selectedConversation, setSelectedConversation] = useState<ConversationWithState | null>(null);
+  const [selectedConversation, setSelectedConversation] =
+    useState<ConversationWithState | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messagesPage, setMessagesPage] = useState(1);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false);
-  const [messageInput, setMessageInput] = useState('');
+  const [messageInput, setMessageInput] = useState("");
 
   // WebSocket - Simplified like test-chat.html
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
+
+  // WebSocket for chat-list (conversations)
+  const [socketChatList, setSocketChatList] = useState<Socket | null>(null);
+  const [isSocketChatListConnected, setIsSocketChatListConnected] =
+    useState(false);
 
   // Refs
   const messagesScrollRef = useRef<HTMLDivElement>(null);
@@ -61,34 +73,37 @@ export function ChatPage() {
   const shouldStickToBottomRef = useRef(true);
 
   // Load conversations
-  const loadConversations = useCallback(async (page: number, search: string = '') => {
-    setIsLoadingConversations(true);
-    try {
-      const response = await chatService.getManyConversations({
-        page,
-        limit: CONVERSATIONS_PER_PAGE,
-      });
+  const loadConversations = useCallback(
+    async (page: number, search: string = "") => {
+      setIsLoadingConversations(true);
+      try {
+        const response = await chatService.getManyConversations({
+          page,
+          limit: CONVERSATIONS_PER_PAGE,
+        });
 
-      const conversations = response.conversations || [];
-      const totalPages = response.totalPages || 1;
+        const conversations = response.conversations || [];
+        const totalPages = response.totalPages || 1;
 
-      let filteredConversations = conversations as ConversationWithState[];
-      
-      if (search) {
-        filteredConversations = filteredConversations.filter((conv) =>
-          conv.fullName.toLowerCase().includes(search.toLowerCase())
-        );
+        let filteredConversations = conversations as ConversationWithState[];
+
+        if (search) {
+          filteredConversations = filteredConversations.filter((conv) =>
+            conv.fullName.toLowerCase().includes(search.toLowerCase())
+          );
+        }
+
+        setConversations(filteredConversations);
+        setConversationsTotalPages(totalPages);
+      } catch (error) {
+        console.error("Failed to load conversations:", error);
+        toast.error("Không thể tải danh sách cuộc trò chuyện");
+      } finally {
+        setIsLoadingConversations(false);
       }
-
-      setConversations(filteredConversations);
-      setConversationsTotalPages(totalPages);
-    } catch (error) {
-      console.error('Failed to load conversations:', error);
-      toast.error('Không thể tải danh sách cuộc trò chuyện');
-    } finally {
-      setIsLoadingConversations(false);
-    }
-  }, []);
+    },
+    []
+  );
 
   // Load messages for a conversation
   const loadMessages = useCallback(
@@ -109,7 +124,7 @@ export function ChatPage() {
           limit: MESSAGES_PER_PAGE,
         });
 
-        console.log('[ChatPage] Raw messages response:', response);
+        console.log("[ChatPage] Raw messages response:", response);
 
         // Axios interceptor already unwraps response.data
         // API returns messages DESC (newest first), reverse to ASC (oldest first) for UI
@@ -121,11 +136,12 @@ export function ChatPage() {
           setMessages(newMessages);
           setMessagesPage(page);
           setHasMoreMessages(chats.length === MESSAGES_PER_PAGE);
-          
+
           // Scroll to bottom
           requestAnimationFrame(() => {
             if (messagesScrollRef.current) {
-              messagesScrollRef.current.scrollTop = messagesScrollRef.current.scrollHeight;
+              messagesScrollRef.current.scrollTop =
+                messagesScrollRef.current.scrollHeight;
             }
           });
         } else {
@@ -136,7 +152,9 @@ export function ChatPage() {
 
           setMessages((prev) => {
             const existingIds = new Set(prev.map((msg) => msg.id));
-            const uniqueNew = newMessages.filter((msg) => !existingIds.has(msg.id));
+            const uniqueNew = newMessages.filter(
+              (msg) => !existingIds.has(msg.id)
+            );
             // Prepend older messages to the beginning
             return [...uniqueNew, ...prev];
           });
@@ -148,13 +166,14 @@ export function ChatPage() {
           requestAnimationFrame(() => {
             if (scrollContainer) {
               const newScrollHeight = scrollContainer.scrollHeight;
-              scrollContainer.scrollTop = newScrollHeight - prevScrollHeight + prevScrollTop;
+              scrollContainer.scrollTop =
+                newScrollHeight - prevScrollHeight + prevScrollTop;
             }
           });
         }
       } catch (error) {
-        console.error('Failed to load messages:', error);
-        toast.error('Không thể tải tin nhắn');
+        console.error("Failed to load messages:", error);
+        toast.error("Không thể tải tin nhắn");
       } finally {
         isFetchingMessagesRef.current = false;
         if (replace) {
@@ -174,32 +193,44 @@ export function ChatPage() {
 
     const nearTop = container.scrollTop < 100;
     const nearBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+      container.scrollHeight - container.scrollTop - container.clientHeight <
+      100;
 
     shouldStickToBottomRef.current = nearBottom;
 
     // Load older messages when scrolled to top
-    if (nearTop && hasMoreMessages && !isLoadingOlderMessages && !isFetchingMessagesRef.current) {
+    if (
+      nearTop &&
+      hasMoreMessages &&
+      !isLoadingOlderMessages &&
+      !isFetchingMessagesRef.current
+    ) {
       loadMessages(selectedConversation.id, messagesPage + 1, false);
     }
-  }, [selectedConversation, hasMoreMessages, isLoadingOlderMessages, messagesPage, loadMessages]);
+  }, [
+    selectedConversation,
+    hasMoreMessages,
+    isLoadingOlderMessages,
+    messagesPage,
+    loadMessages,
+  ]);
 
   // Send message - Giống test-chat.html
   const handleSendMessage = useCallback(() => {
     if (!messageInput.trim() || !selectedConversation || !socket) {
       if (!socket) {
-        toast.error('WebSocket chưa kết nối');
+        toast.error("WebSocket chưa kết nối");
       }
       return;
     }
 
     if (!socket.connected) {
-      toast.error('WebSocket đã ngắt kết nối, vui lòng đợi...');
+      toast.error("WebSocket đã ngắt kết nối, vui lòng đợi...");
       return;
     }
 
     const content = messageInput.trim();
-    setMessageInput('');
+    setMessageInput("");
 
     // Payload giống test-chat.html
     const message = {
@@ -207,21 +238,22 @@ export function ChatPage() {
       content: content,
     };
 
-    console.log('[Chat] 📤 Sending message:', message);
-    socket.emit('sendChat', message);
+    console.log("[Chat] 📤 Sending message:", message);
+    socket.emit("sendChat", message);
 
     // Scroll to bottom
     requestAnimationFrame(() => {
       if (messagesScrollRef.current) {
-        messagesScrollRef.current.scrollTop = messagesScrollRef.current.scrollHeight;
+        messagesScrollRef.current.scrollTop =
+          messagesScrollRef.current.scrollHeight;
       }
     });
   }, [messageInput, selectedConversation, socket]);
 
   // Handle incoming message - Giống test-chat.html
   const handleNewMessage = useCallback((data: ChatMessage) => {
-    console.log('[Chat] 📨 Received newChat:', data);
-    
+    console.log("[Chat] 📨 Received newChat:", data);
+
     setMessages((prev) => {
       // Tránh duplicate
       if (prev.some((msg) => msg.id === data.id)) {
@@ -234,7 +266,8 @@ export function ChatPage() {
     if (shouldStickToBottomRef.current) {
       requestAnimationFrame(() => {
         if (messagesScrollRef.current) {
-          messagesScrollRef.current.scrollTop = messagesScrollRef.current.scrollHeight;
+          messagesScrollRef.current.scrollTop =
+            messagesScrollRef.current.scrollHeight;
         }
       });
     }
@@ -242,14 +275,26 @@ export function ChatPage() {
     // Update conversation list
     setConversations((prev) =>
       prev.map((conv) => {
-        const isRelated = conv.id === data.fromUserId || conv.id === data.toUserId;
-        
+        const isRelated =
+          conv.id === data.fromUserId || conv.id === data.toUserId;
+
         if (isRelated) {
+          // Format time as HH:MM
+          const messageDate = new Date(data.createdAt);
+          const formattedTime = messageDate.toLocaleTimeString("vi-VN", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          });
+
           return {
             ...conv,
             lastMessage: data.content,
-            lastMessageDate: data.createdAt,
-            unread: conv.id === data.fromUserId ? (conv.unread || 0) + 1 : (conv.unread || 0),
+            lastMessageAt: formattedTime,
+            unread:
+              conv.id === data.fromUserId
+                ? (conv.unread || 0) + 1
+                : conv.unread || 0,
           };
         }
         return conv;
@@ -259,53 +304,141 @@ export function ChatPage() {
 
   // Initialize WebSocket - Giống test-chat.html
   useEffect(() => {
-    const wsUrl = import.meta.env.VITE_WS_URL || 'http://localhost:3000';
-    const namespace = '/chat';
+    const wsUrl = import.meta.env.VITE_WS_URL || "http://localhost:3000";
+    const namespace = "/chat";
 
-    console.log('[Chat] 🔌 Connecting WebSocket to:', `${wsUrl}${namespace}`);
-    console.log('[Chat] 🍪 Using httpOnly cookies (sent automatically by browser)');
+    console.log("[Chat] 🔌 Connecting WebSocket to:", `${wsUrl}${namespace}`);
+    console.log(
+      "[Chat] 🍪 Using httpOnly cookies (sent automatically by browser)"
+    );
 
     // Socket.IO options
     // QUAN TRỌNG: Với httpOnly cookies, KHÔNG thể đọc bằng document.cookie
     // Browser sẽ TỰ ĐỘNG gửi cookies qua HTTP headers khi withCredentials: true
     const socketOptions: any = {
       withCredentials: true, // Browser tự động gửi httpOnly cookies
-      transports: ['websocket', 'polling'],
+      transports: ["websocket", "polling"],
     };
 
-    console.log('[Chat] ✅ Browser will automatically send httpOnly cookies with requests');
+    console.log(
+      "[Chat] ✅ Browser will automatically send httpOnly cookies with requests"
+    );
 
     const socketInstance = io(`${wsUrl}${namespace}`, socketOptions);
     setSocket(socketInstance);
 
     // Lắng nghe events
-    socketInstance.on('connect', () => {
-      console.log('[Chat] ✅ WebSocket connected! Socket ID:', socketInstance.id);
+    socketInstance.on("connect", () => {
+      console.log(
+        "[Chat] ✅ WebSocket connected! Socket ID:",
+        socketInstance.id
+      );
       setIsSocketConnected(true);
     });
 
-    socketInstance.on('disconnect', (reason) => {
-      console.log('[Chat] ❌ WebSocket disconnected. Reason:', reason);
+    socketInstance.on("disconnect", (reason) => {
+      console.log("[Chat] ❌ WebSocket disconnected. Reason:", reason);
       setIsSocketConnected(false);
     });
 
-    socketInstance.on('connect_error', (error) => {
-      console.error('[Chat] ❌ Connection error:', error.message);
+    socketInstance.on("connect_error", (error) => {
+      console.error("[Chat] ❌ Connection error:", error.message);
       setIsSocketConnected(false);
     });
 
     // Lắng nghe event 'newChat' - QUAN TRỌNG
-    socketInstance.on('newChat', (data: ChatMessage) => {
-      console.log('[Chat] 📨 New chat message:', data);
+    socketInstance.on("newChat", (data: ChatMessage) => {
+      console.log("[Chat] 📨 New chat message:", data);
       handleNewMessage(data);
     });
 
     // Cleanup
     return () => {
-      console.log('[Chat] 🔌 Disconnecting WebSocket...');
+      console.log("[Chat] 🔌 Disconnecting WebSocket...");
       socketInstance.disconnect();
     };
   }, [handleNewMessage]);
+
+  // Initialize WebSocket for chat-list namespace
+  useEffect(() => {
+    const wsAdminUrl =
+      import.meta.env.VITE_WS_ADMIN_URL || "http://localhost:3100";
+    const namespace = "/chat-list";
+
+    console.log(
+      "[ChatList] 🔌 Connecting WebSocket to:",
+      `${wsAdminUrl}${namespace}`
+    );
+    console.log(
+      "[ChatList] 🍪 Using httpOnly cookies (sent automatically by browser)"
+    );
+
+    const socketOptions: any = {
+      withCredentials: true, // Browser tự động gửi httpOnly cookies
+      transports: ["websocket", "polling"],
+    };
+
+    const socketChatListInstance = io(
+      `${wsAdminUrl}${namespace}`,
+      socketOptions
+    );
+    setSocketChatList(socketChatListInstance);
+
+    // Lắng nghe events
+    socketChatListInstance.on("connect", () => {
+      console.log(
+        "[ChatList] ✅ WebSocket connected! Socket ID:",
+        socketChatListInstance.id
+      );
+      setIsSocketChatListConnected(true);
+    });
+
+    socketChatListInstance.on("disconnect", (reason) => {
+      console.log("[ChatList] ❌ WebSocket disconnected. Reason:", reason);
+      setIsSocketChatListConnected(false);
+    });
+
+    socketChatListInstance.on("connect_error", (error) => {
+      console.error("[ChatList] ❌ Connection error:", error.message);
+      setIsSocketChatListConnected(false);
+    });
+
+    // Lắng nghe event 'conversationsRefreshed'
+    socketChatListInstance.on(
+      "conversationsRefreshed",
+      (data: {
+        conversations: ConversationWithState[];
+        page: number;
+        limit: number;
+        totalItems: number;
+        totalPages: number;
+      }) => {
+        console.log("[ChatList] 📨 Conversations refreshed:", data);
+
+        // Cập nhật conversations state
+        const conversations = data.conversations || [];
+        const totalPages = data.totalPages || 1;
+
+        let filteredConversations = conversations;
+
+        // Áp dụng search filter nếu có
+        if (searchQuery) {
+          filteredConversations = filteredConversations.filter((conv) =>
+            conv.fullName.toLowerCase().includes(searchQuery.toLowerCase())
+          );
+        }
+
+        setConversations(filteredConversations);
+        setConversationsTotalPages(totalPages);
+      }
+    );
+
+    // Cleanup
+    return () => {
+      console.log("[ChatList] 🔌 Disconnecting WebSocket...");
+      socketChatListInstance.disconnect();
+    };
+  }, [searchQuery]);
 
   // Load conversations on mount
   useEffect(() => {
@@ -332,27 +465,14 @@ export function ChatPage() {
   // Helper functions
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const getRelativeTime = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInMs = now.getTime() - date.getTime();
-    const diffInMinutes = Math.floor(diffInMs / 60000);
-    const diffInHours = Math.floor(diffInMs / 3600000);
-    const diffInDays = Math.floor(diffInMs / 86400000);
-
-    if (diffInMinutes < 1) return 'Vừa xong';
-    if (diffInMinutes < 60) return `${diffInMinutes} phút trước`;
-    if (diffInHours < 24) return `${diffInHours} giờ trước`;
-    if (diffInDays === 1) return 'Hôm qua';
-    if (diffInDays < 7) return `${diffInDays} ngày trước`;
-    return date.toLocaleDateString('vi-VN');
+    return date.toLocaleTimeString("vi-VN", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   };
 
   const getInitials = (name: string) => {
-    const words = name.split(' ');
+    const words = name.split(" ");
     if (words.length >= 2) {
       return words[0][0] + words[words.length - 1][0];
     }
@@ -364,36 +484,41 @@ export function ChatPage() {
     // - Message từ user: fromUserId === selectedConversation.id (user gửi cho admin)
     // - Message từ admin: fromUserId !== selectedConversation.id (admin gửi cho user)
     // Hoặc check nếu toUserId === selectedConversation.id (admin gửi cho user này)
-    
+
     if (!selectedConversation) return false;
-    
+
     // Check if this message was sent TO the selected user (meaning admin sent it)
     // OR if fromUserId is not the selected user (also means admin sent it)
-    return message.toUserId === selectedConversation.id || 
-           (message.fromUserId !== selectedConversation.id && message.fromUserId !== null);
+    return (
+      message.toUserId === selectedConversation.id ||
+      (message.fromUserId !== selectedConversation.id &&
+        message.fromUserId !== null)
+    );
   };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold">Quản Lý Chat</h2>
-        
+
         {/* WebSocket Status Indicator */}
         <div className="flex items-center gap-2">
           <div
             className={`h-2 w-2 rounded-full ${
-              isSocketConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'
+              isSocketConnected ? "bg-green-500 animate-pulse" : "bg-red-500"
             }`}
           />
           <span className="text-sm text-gray-600">
-            {isSocketConnected ? 'Đã kết nối WebSocket' : 'Chưa kết nối WebSocket'}
+            {isSocketConnected
+              ? "Đã kết nối WebSocket"
+              : "Chưa kết nối WebSocket"}
           </span>
         </div>
       </div>
 
       <div
         className="grid grid-cols-1 lg:grid-cols-3 gap-6"
-        style={{ height: 'calc(100vh - 12rem)' }}
+        style={{ height: "calc(100vh - 12rem)" }}
       >
         {/* Conversations List */}
         <div className="lg:col-span-1 bg-white rounded-lg shadow flex flex-col overflow-hidden">
@@ -432,8 +557,8 @@ export function ChatPage() {
                       onClick={() => setSelectedConversation(conversation)}
                       className={`w-full p-4 text-left hover:bg-gray-50 transition-colors relative ${
                         selectedConversation?.id === conversation.id
-                          ? 'bg-blue-50 border-l-4 border-[#007BFF]'
-                          : ''
+                          ? "bg-blue-50 border-l-4 border-[#007BFF]"
+                          : ""
                       }`}
                     >
                       <div className="flex items-start gap-3">
@@ -462,10 +587,10 @@ export function ChatPage() {
                             )}
                           </div>
                           <p className="text-sm text-gray-600 truncate mb-1">
-                            {conversation.lastMessage || 'Chưa có tin nhắn mới'}
+                            {conversation.lastMessage || "Chưa có tin nhắn mới"}
                           </p>
                           <p className="text-xs text-gray-400">
-                            {conversation.lastMessageDate ? getRelativeTime(conversation.lastMessageDate) : ''}
+                            {conversation.lastMessageAt || ""}
                           </p>
                         </div>
                       </div>
@@ -507,7 +632,9 @@ export function ChatPage() {
                     </Avatar>
                   </div>
                   <div>
-                    <h3 className="font-medium">{selectedConversation.fullName}</h3>
+                    <h3 className="font-medium">
+                      {selectedConversation.fullName}
+                    </h3>
                     <p className="text-xs text-gray-500">Đang hoạt động</p>
                   </div>
                 </div>
@@ -555,7 +682,9 @@ export function ChatPage() {
                       const isFromAdmin = isMessageFromAdmin(message);
                       const showDateSeparator =
                         index === 0 ||
-                        new Date(messages[index - 1].createdAt).toDateString() !==
+                        new Date(
+                          messages[index - 1].createdAt
+                        ).toDateString() !==
                           new Date(message.createdAt).toDateString();
 
                       return (
@@ -564,12 +693,15 @@ export function ChatPage() {
                           {showDateSeparator && (
                             <div className="flex items-center justify-center my-4">
                               <div className="bg-white px-3 py-1 rounded-full text-xs text-gray-500 shadow-sm">
-                                {new Date(message.createdAt).toLocaleDateString('vi-VN', {
-                                  weekday: 'long',
-                                  year: 'numeric',
-                                  month: 'long',
-                                  day: 'numeric',
-                                })}
+                                {new Date(message.createdAt).toLocaleDateString(
+                                  "vi-VN",
+                                  {
+                                    weekday: "long",
+                                    year: "numeric",
+                                    month: "long",
+                                    day: "numeric",
+                                  }
+                                )}
                               </div>
                             </div>
                           )}
@@ -577,7 +709,7 @@ export function ChatPage() {
                           {/* Message bubble */}
                           <div
                             className={`flex items-end gap-2 ${
-                              isFromAdmin ? 'justify-end' : 'justify-start'
+                              isFromAdmin ? "justify-end" : "justify-start"
                             }`}
                           >
                             {!isFromAdmin && (
@@ -597,20 +729,26 @@ export function ChatPage() {
                               <div
                                 className={`rounded-2xl px-4 py-2 shadow-sm ${
                                   isFromAdmin
-                                    ? 'bg-[#007BFF] text-white rounded-br-none'
-                                    : 'bg-white text-gray-900 rounded-bl-none border border-gray-200'
+                                    ? "bg-[#007BFF] text-white rounded-br-none"
+                                    : "bg-white text-gray-900 rounded-bl-none border border-gray-200"
                                 }`}
                               >
-                                <p className="break-words text-sm">{message.content}</p>
+                                <p className="break-words text-sm">
+                                  {message.content}
+                                </p>
                               </div>
-                              <div className={`flex items-center gap-1 mt-1 px-2 ${
-                                isFromAdmin ? 'self-end' : 'self-start'
-                              }`}>
+                              <div
+                                className={`flex items-center gap-1 mt-1 px-2 ${
+                                  isFromAdmin ? "self-end" : "self-start"
+                                }`}
+                              >
                                 <p className="text-xs text-gray-400">
                                   {formatTime(message.createdAt)}
                                 </p>
                                 {isFromAdmin && (
-                                  <span className="text-xs text-gray-400">✓</span>
+                                  <span className="text-xs text-gray-400">
+                                    ✓
+                                  </span>
                                 )}
                               </div>
                             </div>
@@ -644,7 +782,7 @@ export function ChatPage() {
                     value={messageInput}
                     onChange={(e) => setMessageInput(e.target.value)}
                     onKeyPress={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
+                      if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
                         handleSendMessage();
                       }
@@ -670,7 +808,9 @@ export function ChatPage() {
                 <h3 className="text-lg font-medium text-gray-600 mb-2">
                   Chào mừng đến với Chat
                 </h3>
-                <p className="text-sm">Chọn một cuộc trò chuyện để bắt đầu nhắn tin</p>
+                <p className="text-sm">
+                  Chọn một cuộc trò chuyện để bắt đầu nhắn tin
+                </p>
               </div>
             </div>
           )}
