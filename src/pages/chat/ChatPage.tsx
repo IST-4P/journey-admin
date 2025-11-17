@@ -468,6 +468,7 @@ export function ChatPage() {
     return date.toLocaleTimeString("vi-VN", {
       hour: "2-digit",
       minute: "2-digit",
+      hour12: false,
     });
   };
 
@@ -590,7 +591,9 @@ export function ChatPage() {
                             {conversation.lastMessage || "Chưa có tin nhắn mới"}
                           </p>
                           <p className="text-xs text-gray-400">
-                            {conversation.lastMessageAt || ""}
+                            {conversation.lastMessageAt
+                              ? formatTime(conversation.lastMessageAt)
+                              : ""}
                           </p>
                         </div>
                       </div>
