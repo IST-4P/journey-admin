@@ -792,7 +792,10 @@ export function ComplaintPage() {
                   <div className="relative">
                     <Avatar className="h-10 w-10">
                       <AvatarImage
-                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedComplaint.userId}`}
+                        src={
+                          selectedComplaint.avatarUrl ||
+                          `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedComplaint.userId}`
+                        }
                       />
                       <AvatarFallback className="bg-[#007BFF] text-white">
                         <AlertCircle className="h-6 w-6" />
@@ -934,7 +937,10 @@ export function ComplaintPage() {
                             {!isFromAdmin && (
                               <Avatar className="h-8 w-8 flex-shrink-0">
                                 <AvatarImage
-                                  src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedComplaint.userId}`}
+                                  src={
+                                    selectedComplaint.avatarUrl ||
+                                    `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedComplaint.userId}`
+                                  }
                                 />
                                 <AvatarFallback className="bg-gray-300 text-gray-600 text-xs">
                                   U
@@ -1054,14 +1060,6 @@ export function ComplaintPage() {
                     <Send className="h-4 w-4" />
                   </Button>
                 </div>
-
-                {/* WebSocket Status */}
-                {!isSocketConnected && (
-                  <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
-                    <div className="h-2 w-2 rounded-full bg-red-500" />
-                    <span>Đang kết nối WebSocket...</span>
-                  </div>
-                )}
               </div>
             </>
           ) : (
