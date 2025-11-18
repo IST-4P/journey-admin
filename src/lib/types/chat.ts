@@ -7,11 +7,11 @@ export interface ChatMessage {
 }
 
 export interface Conversation {
-  id: string;
+  userId: string;
   fullName: string;
   avatarUrl?: string;
   lastMessage?: string;
-  lastMessageDate?: string;
+  lastMessageAt?: string;
   unread?: number;
 }
 

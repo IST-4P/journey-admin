@@ -205,7 +205,7 @@ export function ChatPage() {
       !isLoadingOlderMessages &&
       !isFetchingMessagesRef.current
     ) {
-      loadMessages(selectedConversation.id, messagesPage + 1, false);
+      loadMessages(selectedConversation.userId, messagesPage + 1, false);
     }
   }, [
     selectedConversation,
@@ -234,7 +234,7 @@ export function ChatPage() {
 
     // Payload giống test-chat.html
     const message = {
-      toUserId: selectedConversation.id,
+      toUserId: selectedConversation.userId,
       content: content,
     };
 
@@ -276,7 +276,7 @@ export function ChatPage() {
     setConversations((prev) =>
       prev.map((conv) => {
         const isRelated =
-          conv.id === data.fromUserId || conv.id === data.toUserId;
+          conv.userId === data.fromUserId || conv.userId === data.toUserId;
 
         if (isRelated) {
           // Format time as HH:MM
@@ -292,7 +292,7 @@ export function ChatPage() {
             lastMessage: data.content,
             lastMessageAt: formattedTime,
             unread:
-              conv.id === data.fromUserId
+              conv.userId === data.fromUserId
                 ? (conv.unread || 0) + 1
                 : conv.unread || 0,
           };
@@ -451,12 +451,14 @@ export function ChatPage() {
       setMessages([]);
       setMessagesPage(1);
       setHasMoreMessages(true);
-      loadMessages(selectedConversation.id, 1, true);
+      loadMessages(selectedConversation.userId, 1, true);
 
       // Mark conversation as read
       setConversations((prev) =>
         prev.map((conv) =>
-          conv.id === selectedConversation.id ? { ...conv, unread: 0 } : conv
+          conv.userId === selectedConversation.userId
+            ? { ...conv, unread: 0 }
+            : conv
         )
       );
     }
@@ -482,17 +484,17 @@ export function ChatPage() {
 
   const isMessageFromAdmin = (message: ChatMessage) => {
     // Trong context chat admin-user:
-    // - Message từ user: fromUserId === selectedConversation.id (user gửi cho admin)
-    // - Message từ admin: fromUserId !== selectedConversation.id (admin gửi cho user)
-    // Hoặc check nếu toUserId === selectedConversation.id (admin gửi cho user này)
+    // - Message từ user: fromUserId === selectedConversation.userId (user gửi cho admin)
+    // - Message từ admin: fromUserId !== selectedConversation.userId (admin gửi cho user)
+    // Hoặc check nếu toUserId === selectedConversation.userId (admin gửi cho user này)
 
     if (!selectedConversation) return false;
 
     // Check if this message was sent TO the selected user (meaning admin sent it)
     // OR if fromUserId is not the selected user (also means admin sent it)
     return (
-      message.toUserId === selectedConversation.id ||
-      (message.fromUserId !== selectedConversation.id &&
+      message.toUserId === selectedConversation.userId ||
+      (message.fromUserId !== selectedConversation.userId &&
         message.fromUserId !== null)
     );
   };
@@ -554,10 +556,10 @@ export function ChatPage() {
                 <div className="divide-y">
                   {conversations.map((conversation) => (
                     <button
-                      key={conversation.id}
+                      key={conversation.userId}
                       onClick={() => setSelectedConversation(conversation)}
                       className={`w-full p-4 text-left hover:bg-gray-50 transition-colors relative ${
-                        selectedConversation?.id === conversation.id
+                        selectedConversation?.userId === conversation.userId
                           ? "bg-blue-50 border-l-4 border-[#007BFF]"
                           : ""
                       }`}

@@ -1,6 +1,6 @@
 // Enums matching Prisma schema
-export type ComplaintStatus = 'OPEN' | 'IN_PROGRESS' | 'CLOSED';
-export type ComplaintMessageType = 'TEXT' | 'IMAGE';
+export type ComplaintStatus = "OPEN" | "IN_PROGRESS" | "CLOSED";
+export type ComplaintMessageType = "TEXT" | "IMAGE";
 
 export interface ComplaintMessage {
   id: string;
@@ -12,12 +12,16 @@ export interface ComplaintMessage {
 }
 
 export interface Complaint {
-  id: string;
+  complaintId: string;
   userId: string;
   title: string;
   status: ComplaintStatus;
+  fullName?: string;
+  avatarUrl?: string;
+  lastMessage?: string;
+  lastMessageAt?: string;
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
 }
 
 export interface ComplaintsApiResponse {

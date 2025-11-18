@@ -1,31 +1,35 @@
 import {
-  Send,
-  Search,
-  MoreVertical,
-  Loader2,
   AlertCircle,
-  Image as ImageIcon,
-  Filter,
   Check,
-} from 'lucide-react';
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { io, Socket } from 'socket.io-client';
-import { Pagination } from '../../components/common/Pagination';
-import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
-import { Badge } from '../../components/ui/badge';
-import { Button } from '../../components/ui/button';
-import { Input } from '../../components/ui/input';
-import { ScrollArea } from '../../components/ui/scroll-area';
+  Filter,
+  Image as ImageIcon,
+  Loader2,
+  MoreVertical,
+  Search,
+  Send,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { io, Socket } from "socket.io-client";
+import { toast } from "sonner";
+import { Pagination } from "../../components/common/Pagination";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "../../components/ui/avatar";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '../../components/ui/dropdown-menu';
-import { complaintService } from '../../lib/services/complaint.service';
-import { Complaint, ComplaintMessage } from '../../lib/types/complaint';
-import { uploadImage } from '../../lib/services/media.service';
-import { toast } from 'sonner';
+} from "../../components/ui/dropdown-menu";
+import { Input } from "../../components/ui/input";
+import { ScrollArea } from "../../components/ui/scroll-area";
+import { complaintService } from "../../lib/services/complaint.service";
+import { uploadImage } from "../../lib/services/media.service";
+import { Complaint, ComplaintMessage } from "../../lib/types/complaint";
 
 const COMPLAINTS_PER_PAGE = 15;
 const MESSAGES_PER_PAGE = 20;
@@ -41,23 +45,31 @@ export function ComplaintPage() {
   const [complaints, setComplaints] = useState<ComplaintWithState[]>([]);
   const [complaintsPage, setComplaintsPage] = useState(1);
   const [complaintsTotalPages, setComplaintsTotalPages] = useState(1);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>(''); // '' = All, 'OPEN', 'IN_PROGRESS', 'CLOSED'
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>(""); // '' = All, 'OPEN', 'IN_PROGRESS', 'CLOSED'
   const [isLoadingComplaints, setIsLoadingComplaints] = useState(false);
 
   // Complaint messages state
-  const [selectedComplaint, setSelectedComplaint] = useState<ComplaintWithState | null>(null);
+  const [selectedComplaint, setSelectedComplaint] =
+    useState<ComplaintWithState | null>(null);
   const [messages, setMessages] = useState<ComplaintMessage[]>([]);
   const [messagesPage, setMessagesPage] = useState(1);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false);
-  const [messageInput, setMessageInput] = useState('');
+  const [messageInput, setMessageInput] = useState("");
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   // WebSocket - Direct Socket.IO like ChatPage
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
+
+  // WebSocket for complaint-list
+  const [socketComplaintList, setSocketComplaintList] = useState<Socket | null>(
+    null
+  );
+  const [isSocketComplaintListConnected, setIsSocketComplaintListConnected] =
+    useState(false);
 
   // Refs
   const messagesScrollRef = useRef<HTMLDivElement>(null);
@@ -66,57 +78,62 @@ export function ComplaintPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load complaints
-  const loadComplaints = useCallback(async (page: number, search: string = '', status: string = '') => {
-    setIsLoadingComplaints(true);
-    try {
-      const params: any = {
-        page,
-        limit: COMPLAINTS_PER_PAGE,
-      };
-      
-      if (status) {
-        params.status = status;
+  const loadComplaints = useCallback(
+    async (page: number, search: string = "", status: string = "") => {
+      setIsLoadingComplaints(true);
+      try {
+        const params: any = {
+          page,
+          limit: COMPLAINTS_PER_PAGE,
+        };
+
+        if (status) {
+          params.status = status;
+        }
+
+        const response = await complaintService.getManyComplaints(params);
+
+        console.log("[ComplaintPage] Raw response:", response);
+
+        // Xử lý trường hợp API trả về empty object hoặc không có complaints array
+        // Ví dụ: { data: {}, message: "Error.ComplaintNotFound", statusCode: 404 }
+        const complaints = response?.complaints || [];
+        const totalPages = response?.totalPages || 1;
+
+        console.log("[ComplaintPage] Complaints array:", complaints);
+
+        // Filter by search if needed
+        let filteredComplaints = complaints as ComplaintWithState[];
+
+        if (search) {
+          filteredComplaints = filteredComplaints.filter((complaint) =>
+            complaint.title.toLowerCase().includes(search.toLowerCase())
+          );
+        }
+
+        setComplaints(filteredComplaints);
+        setComplaintsTotalPages(totalPages);
+        console.log("[ComplaintPage] Loaded complaints:", filteredComplaints);
+      } catch (error: any) {
+        console.error("Failed to load complaints:", error);
+
+        // Nếu lỗi 404 (ComplaintNotFound), set empty array thay vì hiển thị toast error
+        if (error?.response?.status === 404 || error?.statusCode === 404) {
+          console.log(
+            "[ComplaintPage] No complaints found (404), showing empty state"
+          );
+          setComplaints([]);
+          setComplaintsTotalPages(1);
+        } else {
+          // Các lỗi khác mới hiển thị toast
+          toast.error("Không thể tải danh sách khiếu nại");
+        }
+      } finally {
+        setIsLoadingComplaints(false);
       }
-      
-      const response = await complaintService.getManyComplaints(params);
-
-      console.log('[ComplaintPage] Raw response:', response);
-
-      // Xử lý trường hợp API trả về empty object hoặc không có complaints array
-      // Ví dụ: { data: {}, message: "Error.ComplaintNotFound", statusCode: 404 }
-      const complaints = response?.complaints || [];
-      const totalPages = response?.totalPages || 1;
-
-      console.log('[ComplaintPage] Complaints array:', complaints);
-
-      // Filter by search if needed
-      let filteredComplaints = complaints as ComplaintWithState[];
-      
-      if (search) {
-        filteredComplaints = filteredComplaints.filter((complaint) =>
-          complaint.title.toLowerCase().includes(search.toLowerCase())
-        );
-      }
-
-      setComplaints(filteredComplaints);
-      setComplaintsTotalPages(totalPages);
-      console.log('[ComplaintPage] Loaded complaints:', filteredComplaints);
-    } catch (error: any) {
-      console.error('Failed to load complaints:', error);
-      
-      // Nếu lỗi 404 (ComplaintNotFound), set empty array thay vì hiển thị toast error
-      if (error?.response?.status === 404 || error?.statusCode === 404) {
-        console.log('[ComplaintPage] No complaints found (404), showing empty state');
-        setComplaints([]);
-        setComplaintsTotalPages(1);
-      } else {
-        // Các lỗi khác mới hiển thị toast
-        toast.error('Không thể tải danh sách khiếu nại');
-      }
-    } finally {
-      setIsLoadingComplaints(false);
-    }
-  }, []);
+    },
+    []
+  );
 
   // Load messages for a complaint
   const loadMessages = useCallback(
@@ -137,7 +154,7 @@ export function ComplaintPage() {
           limit: MESSAGES_PER_PAGE,
         });
 
-        console.log('[ComplaintPage] Raw messages response:', response);
+        console.log("[ComplaintPage] Raw messages response:", response);
 
         // API returns messages DESC (newest first), reverse to ASC (oldest first) for UI
         const complaintMessages = response.complaintMessages || [];
@@ -148,11 +165,12 @@ export function ComplaintPage() {
           setMessages(newMessages);
           setMessagesPage(page);
           setHasMoreMessages(complaintMessages.length === MESSAGES_PER_PAGE);
-          
+
           // Scroll to bottom
           requestAnimationFrame(() => {
             if (messagesScrollRef.current) {
-              messagesScrollRef.current.scrollTop = messagesScrollRef.current.scrollHeight;
+              messagesScrollRef.current.scrollTop =
+                messagesScrollRef.current.scrollHeight;
             }
           });
         } else {
@@ -163,7 +181,9 @@ export function ComplaintPage() {
 
           setMessages((prev) => {
             const existingIds = new Set(prev.map((msg) => msg.id));
-            const uniqueNew = newMessages.filter((msg) => !existingIds.has(msg.id));
+            const uniqueNew = newMessages.filter(
+              (msg) => !existingIds.has(msg.id)
+            );
             // Prepend older messages to the beginning
             return [...uniqueNew, ...prev];
           });
@@ -175,13 +195,14 @@ export function ComplaintPage() {
           requestAnimationFrame(() => {
             if (scrollContainer) {
               const newScrollHeight = scrollContainer.scrollHeight;
-              scrollContainer.scrollTop = newScrollHeight - prevScrollHeight + prevScrollTop;
+              scrollContainer.scrollTop =
+                newScrollHeight - prevScrollHeight + prevScrollTop;
             }
           });
         }
       } catch (error) {
-        console.error('Failed to load messages:', error);
-        toast.error('Không thể tải tin nhắn');
+        console.error("Failed to load messages:", error);
+        toast.error("Không thể tải tin nhắn");
       } finally {
         isFetchingMessagesRef.current = false;
         if (replace) {
@@ -201,121 +222,138 @@ export function ComplaintPage() {
 
     const nearTop = container.scrollTop < 100;
     const nearBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+      container.scrollHeight - container.scrollTop - container.clientHeight <
+      100;
 
     shouldStickToBottomRef.current = nearBottom;
 
     // Load older messages when scrolled to top
-    if (nearTop && hasMoreMessages && !isLoadingOlderMessages && !isFetchingMessagesRef.current) {
-      loadMessages(selectedComplaint.id, messagesPage + 1, false);
+    if (
+      nearTop &&
+      hasMoreMessages &&
+      !isLoadingOlderMessages &&
+      !isFetchingMessagesRef.current
+    ) {
+      loadMessages(selectedComplaint.complaintId, messagesPage + 1, false);
     }
-  }, [selectedComplaint, hasMoreMessages, isLoadingOlderMessages, messagesPage, loadMessages]);
+  }, [
+    selectedComplaint,
+    hasMoreMessages,
+    isLoadingOlderMessages,
+    messagesPage,
+    loadMessages,
+  ]);
 
   // Send message via WebSocket
   const handleSendMessage = useCallback(() => {
     if (!messageInput.trim() || !selectedComplaint || !socket) {
       if (!socket) {
-        toast.error('WebSocket chưa kết nối');
+        toast.error("WebSocket chưa kết nối");
       }
       return;
     }
 
     if (!socket.connected) {
-      toast.error('WebSocket đã ngắt kết nối, vui lòng đợi...');
+      toast.error("WebSocket đã ngắt kết nối, vui lòng đợi...");
       return;
     }
 
     const content = messageInput.trim();
-    setMessageInput('');
+    setMessageInput("");
 
     // Payload giống test-complaint.html
     const message = {
-      complaintId: selectedComplaint.id,
-      messageType: 'TEXT',
+      complaintId: selectedComplaint.complaintId,
+      messageType: "TEXT",
       content: content,
     };
 
-    console.log('[Complaint] 📤 Sending TEXT message:', message);
-    socket.emit('sendComplaintMessage', message);
+    console.log("[Complaint] 📤 Sending TEXT message:", message);
+    socket.emit("sendComplaintMessage", message);
 
     // Scroll to bottom
     requestAnimationFrame(() => {
       if (messagesScrollRef.current) {
-        messagesScrollRef.current.scrollTop = messagesScrollRef.current.scrollHeight;
+        messagesScrollRef.current.scrollTop =
+          messagesScrollRef.current.scrollHeight;
       }
     });
   }, [messageInput, selectedComplaint, socket]);
 
   // Handle image upload and send IMAGE message
-  const handleImageUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !selectedComplaint || !socket) {
-      if (!socket) {
-        toast.error('WebSocket chưa kết nối');
-      }
-      return;
-    }
-
-    if (!socket.connected) {
-      toast.error('WebSocket đã ngắt kết nối, vui lòng đợi...');
-      return;
-    }
-
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      toast.error('Vui lòng chọn file hình ảnh');
-      return;
-    }
-
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Kích thước ảnh không được vượt quá 5MB');
-      return;
-    }
-
-    setIsUploadingImage(true);
-    try {
-      console.log('[Complaint] 📤 Uploading image:', file.name);
-      
-      // Upload image using presigned URL
-      const imageUrl = await uploadImage(file);
-      
-      console.log('[Complaint] ✅ Image uploaded:', imageUrl);
-
-      // Send IMAGE message via WebSocket
-      const message = {
-        complaintId: selectedComplaint.id,
-        messageType: 'IMAGE',
-        content: imageUrl,
-      };
-
-      console.log('[Complaint] 📤 Sending IMAGE message:', message);
-      socket.emit('sendComplaintMessage', message);
-
-      toast.success('Đã gửi hình ảnh');
-
-      // Scroll to bottom
-      requestAnimationFrame(() => {
-        if (messagesScrollRef.current) {
-          messagesScrollRef.current.scrollTop = messagesScrollRef.current.scrollHeight;
+  const handleImageUpload = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file || !selectedComplaint || !socket) {
+        if (!socket) {
+          toast.error("WebSocket chưa kết nối");
         }
-      });
-    } catch (error) {
-      console.error('[Complaint] ❌ Error uploading image:', error);
-      toast.error('Lỗi khi tải lên hình ảnh');
-    } finally {
-      setIsUploadingImage(false);
-      // Reset file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+        return;
       }
-    }
-  }, [selectedComplaint, socket]);
+
+      if (!socket.connected) {
+        toast.error("WebSocket đã ngắt kết nối, vui lòng đợi...");
+        return;
+      }
+
+      // Validate file type
+      if (!file.type.startsWith("image/")) {
+        toast.error("Vui lòng chọn file hình ảnh");
+        return;
+      }
+
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error("Kích thước ảnh không được vượt quá 5MB");
+        return;
+      }
+
+      setIsUploadingImage(true);
+      try {
+        console.log("[Complaint] 📤 Uploading image:", file.name);
+
+        // Upload image using presigned URL
+        const imageUrl = await uploadImage(file);
+
+        console.log("[Complaint] ✅ Image uploaded:", imageUrl);
+
+        // Send IMAGE message via WebSocket
+        const message = {
+          complaintId: selectedComplaint.complaintId,
+          messageType: "IMAGE",
+          content: imageUrl,
+        };
+
+        console.log("[Complaint] 📤 Sending IMAGE message:", message);
+        socket.emit("sendComplaintMessage", message);
+
+        toast.success("Đã gửi hình ảnh");
+
+        // Scroll to bottom
+        requestAnimationFrame(() => {
+          if (messagesScrollRef.current) {
+            messagesScrollRef.current.scrollTop =
+              messagesScrollRef.current.scrollHeight;
+          }
+        });
+      } catch (error) {
+        console.error("[Complaint] ❌ Error uploading image:", error);
+        toast.error("Lỗi khi tải lên hình ảnh");
+      } finally {
+        setIsUploadingImage(false);
+        // Reset file input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+      }
+    },
+    [selectedComplaint, socket]
+  );
 
   // Handle incoming message from WebSocket - Giống ChatPage
   const handleNewMessage = useCallback((data: ComplaintMessage) => {
-    console.log('[Complaint] 📨 Received newComplaintMessage:', data);
-    
+    console.log("[Complaint] 📨 Received newComplaintMessage:", data);
+
     setMessages((prev) => {
       // Tránh duplicate
       if (prev.some((msg) => msg.id === data.id)) {
@@ -328,7 +366,8 @@ export function ComplaintPage() {
     if (shouldStickToBottomRef.current) {
       requestAnimationFrame(() => {
         if (messagesScrollRef.current) {
-          messagesScrollRef.current.scrollTop = messagesScrollRef.current.scrollHeight;
+          messagesScrollRef.current.scrollTop =
+            messagesScrollRef.current.scrollHeight;
         }
       });
     }
@@ -336,59 +375,157 @@ export function ComplaintPage() {
 
   // Initialize WebSocket - Giống ChatPage
   useEffect(() => {
-    if (!selectedComplaint?.id) {
+    if (!selectedComplaint?.complaintId) {
       return;
     }
 
-    const wsUrl = import.meta.env.VITE_WS_URL || 'http://localhost:3000';
-    const namespace = '/complaint';
+    const wsUrl = import.meta.env.VITE_WS_URL || "http://localhost:3000";
+    const namespace = "/complaint";
 
-    console.log('[Complaint] 🔌 Connecting WebSocket to:', `${wsUrl}${namespace}`);
-    console.log('[Complaint] 🍪 Using httpOnly cookies (sent automatically by browser)');
-    console.log('[Complaint] 📋 Complaint ID:', selectedComplaint.id);
+    console.log(
+      "[Complaint] 🔌 Connecting WebSocket to:",
+      `${wsUrl}${namespace}`
+    );
+    console.log(
+      "[Complaint] 🍪 Using httpOnly cookies (sent automatically by browser)"
+    );
+    console.log("[Complaint] 📋 Complaint ID:", selectedComplaint.complaintId);
 
     // Socket.IO options với query parameter complaintId
     const socketOptions: any = {
       withCredentials: true, // Browser tự động gửi httpOnly cookies
-      transports: ['websocket', 'polling'],
+      transports: ["websocket", "polling"],
       query: {
-        complaintId: selectedComplaint.id,
+        complaintId: selectedComplaint.complaintId,
       },
     };
 
-    console.log('[Complaint] ✅ Browser will automatically send httpOnly cookies with requests');
+    console.log(
+      "[Complaint] ✅ Browser will automatically send httpOnly cookies with requests"
+    );
 
     const socketInstance = io(`${wsUrl}${namespace}`, socketOptions);
     setSocket(socketInstance);
 
     // Lắng nghe events
-    socketInstance.on('connect', () => {
-      console.log('[Complaint] ✅ WebSocket connected! Socket ID:', socketInstance.id);
+    socketInstance.on("connect", () => {
+      console.log(
+        "[Complaint] ✅ WebSocket connected! Socket ID:",
+        socketInstance.id
+      );
       setIsSocketConnected(true);
     });
 
-    socketInstance.on('disconnect', (reason) => {
-      console.log('[Complaint] ❌ WebSocket disconnected. Reason:', reason);
+    socketInstance.on("disconnect", (reason) => {
+      console.log("[Complaint] ❌ WebSocket disconnected. Reason:", reason);
       setIsSocketConnected(false);
     });
 
-    socketInstance.on('connect_error', (error) => {
-      console.error('[Complaint] ❌ Connection error:', error.message);
+    socketInstance.on("connect_error", (error) => {
+      console.error("[Complaint] ❌ Connection error:", error.message);
       setIsSocketConnected(false);
     });
 
     // Lắng nghe event 'newComplaintMessage' - QUAN TRỌNG
-    socketInstance.on('newComplaintMessage', (data: ComplaintMessage) => {
-      console.log('[Complaint] 📨 New complaint message:', data);
+    socketInstance.on("newComplaintMessage", (data: ComplaintMessage) => {
+      console.log("[Complaint] 📨 New complaint message:", data);
       handleNewMessage(data);
     });
 
     // Cleanup
     return () => {
-      console.log('[Complaint] 🔌 Disconnecting WebSocket...');
+      console.log("[Complaint] 🔌 Disconnecting WebSocket...");
       socketInstance.disconnect();
     };
-  }, [selectedComplaint?.id, handleNewMessage]);
+  }, [selectedComplaint?.complaintId, handleNewMessage]);
+
+  // Initialize WebSocket for complaint-list namespace
+  useEffect(() => {
+    const wsAdminUrl =
+      import.meta.env.VITE_WS_ADMIN_URL || "http://localhost:3100";
+    const namespace = "/complaint-list";
+
+    console.log(
+      "[ComplaintList] 🔌 Connecting WebSocket to:",
+      `${wsAdminUrl}${namespace}`
+    );
+    console.log(
+      "[ComplaintList] 🍪 Using httpOnly cookies (sent automatically by browser)"
+    );
+
+    const socketOptions: any = {
+      withCredentials: true, // Browser tự động gửi httpOnly cookies
+      transports: ["websocket", "polling"],
+    };
+
+    const socketComplaintListInstance = io(
+      `${wsAdminUrl}${namespace}`,
+      socketOptions
+    );
+    setSocketComplaintList(socketComplaintListInstance);
+
+    // Lắng nghe events
+    socketComplaintListInstance.on("connect", () => {
+      console.log(
+        "[ComplaintList] ✅ WebSocket connected! Socket ID:",
+        socketComplaintListInstance.id
+      );
+      setIsSocketComplaintListConnected(true);
+    });
+
+    socketComplaintListInstance.on("disconnect", (reason) => {
+      console.log("[ComplaintList] ❌ WebSocket disconnected. Reason:", reason);
+      setIsSocketComplaintListConnected(false);
+    });
+
+    socketComplaintListInstance.on("connect_error", (error) => {
+      console.error("[ComplaintList] ❌ Connection error:", error.message);
+      setIsSocketComplaintListConnected(false);
+    });
+
+    // Lắng nghe event 'complaintsRefreshed'
+    socketComplaintListInstance.on(
+      "complaintsRefreshed",
+      (data: {
+        complaints: ComplaintWithState[];
+        page: number;
+        limit: number;
+        totalItems: number;
+        totalPages: number;
+      }) => {
+        console.log("[ComplaintList] 📨 Complaints refreshed:", data);
+
+        // Cập nhật complaints state
+        const complaints = data.complaints || [];
+        const totalPages = data.totalPages || 1;
+
+        let filteredComplaints = complaints;
+
+        // Áp dụng search filter nếu có
+        if (searchQuery) {
+          filteredComplaints = filteredComplaints.filter((complaint) =>
+            complaint.title.toLowerCase().includes(searchQuery.toLowerCase())
+          );
+        }
+
+        // Áp dụng status filter nếu có
+        if (statusFilter) {
+          filteredComplaints = filteredComplaints.filter(
+            (complaint) => complaint.status === statusFilter
+          );
+        }
+
+        setComplaints(filteredComplaints);
+        setComplaintsTotalPages(totalPages);
+      }
+    );
+
+    // Cleanup
+    return () => {
+      console.log("[ComplaintList] 🔌 Disconnecting WebSocket...");
+      socketComplaintListInstance.disconnect();
+    };
+  }, [searchQuery, statusFilter]);
 
   // Load complaints on mount
   useEffect(() => {
@@ -401,14 +538,18 @@ export function ComplaintPage() {
       setMessages([]);
       setMessagesPage(1);
       setHasMoreMessages(true);
-      loadMessages(selectedComplaint.id, 1, true);
+      loadMessages(selectedComplaint.complaintId, 1, true);
     }
   }, [selectedComplaint, loadMessages]);
 
   // Helper functions
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString("vi-VN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
   };
 
   const getRelativeTime = (dateString: string) => {
@@ -419,64 +560,83 @@ export function ComplaintPage() {
     const diffInHours = Math.floor(diffInMs / 3600000);
     const diffInDays = Math.floor(diffInMs / 86400000);
 
-    if (diffInMinutes < 1) return 'Vừa xong';
+    if (diffInMinutes < 1) return "Vừa xong";
     if (diffInMinutes < 60) return `${diffInMinutes} phút trước`;
     if (diffInHours < 24) return `${diffInHours} giờ trước`;
-    if (diffInDays === 1) return 'Hôm qua';
+    if (diffInDays === 1) return "Hôm qua";
     if (diffInDays < 7) return `${diffInDays} ngày trước`;
-    return date.toLocaleDateString('vi-VN');
+    return date.toLocaleDateString("vi-VN");
   };
 
   const isMessageFromAdmin = (message: ComplaintMessage) => {
     // Admin messages have senderId that's not the complaint's userId
     // Or check if it's the optimistic message
     if (!selectedComplaint) return false;
-    return message.senderId === 'ADMIN' || message.senderId !== selectedComplaint.userId;
+    return (
+      message.senderId === "ADMIN" ||
+      message.senderId !== selectedComplaint.userId
+    );
   };
 
   const getStatusBadge = (status: string) => {
     const statusMap: Record<string, { label: string; className: string }> = {
-      OPEN: { label: 'Mở', className: 'bg-blue-100 text-blue-800' },
-      IN_PROGRESS: { label: 'Đang xử lý', className: 'bg-yellow-100 text-yellow-800' },
-      CLOSED: { label: 'Đã đóng', className: 'bg-gray-100 text-gray-800' },
+      OPEN: { label: "Mở", className: "bg-blue-100 text-blue-800" },
+      IN_PROGRESS: {
+        label: "Đang xử lý",
+        className: "bg-yellow-100 text-yellow-800",
+      },
+      CLOSED: { label: "Đã đóng", className: "bg-gray-100 text-gray-800" },
     };
-    const config = statusMap[status] || { label: status, className: 'bg-gray-100 text-gray-800' };
+    const config = statusMap[status] || {
+      label: status,
+      className: "bg-gray-100 text-gray-800",
+    };
     return (
-      <Badge className={`${config.className} border-0`}>
-        {config.label}
-      </Badge>
+      <Badge className={`${config.className} border-0`}>{config.label}</Badge>
     );
   };
 
   // Update complaint status
-  const handleUpdateStatus = useCallback(async (complaintId: string, newStatus: 'OPEN' | 'IN_PROGRESS' | 'CLOSED') => {
-    try {
-      await complaintService.updateComplaintStatus({
-        id: complaintId,
-        status: newStatus,
-      });
+  const handleUpdateStatus = useCallback(
+    async (
+      complaintId: string,
+      newStatus: "OPEN" | "IN_PROGRESS" | "CLOSED"
+    ) => {
+      try {
+        await complaintService.updateComplaintStatus({
+          id: complaintId,
+          status: newStatus,
+        });
 
-      // Update local state
-      setComplaints((prev) =>
-        prev.map((c) => (c.id === complaintId ? { ...c, status: newStatus } : c))
-      );
+        // Update local state
+        setComplaints((prev) =>
+          prev.map((c) =>
+            c.complaintId === complaintId ? { ...c, status: newStatus } : c
+          )
+        );
 
-      if (selectedComplaint?.id === complaintId) {
-        setSelectedComplaint((prev) => (prev ? { ...prev, status: newStatus } : null));
+        if (selectedComplaint?.complaintId === complaintId) {
+          setSelectedComplaint((prev) =>
+            prev ? { ...prev, status: newStatus } : null
+          );
+        }
+
+        toast.success(
+          `Đã cập nhật trạng thái thành "${getStatusLabel(newStatus)}"`
+        );
+      } catch (error) {
+        console.error("Failed to update complaint status:", error);
+        toast.error("Không thể cập nhật trạng thái");
       }
-
-      toast.success(`Đã cập nhật trạng thái thành "${getStatusLabel(newStatus)}"`);
-    } catch (error) {
-      console.error('Failed to update complaint status:', error);
-      toast.error('Không thể cập nhật trạng thái');
-    }
-  }, [selectedComplaint]);
+    },
+    [selectedComplaint]
+  );
 
   const getStatusLabel = (status: string) => {
     const map: Record<string, string> = {
-      OPEN: 'Mở',
-      IN_PROGRESS: 'Đang xử lý',
-      CLOSED: 'Đã đóng',
+      OPEN: "Mở",
+      IN_PROGRESS: "Đang xử lý",
+      CLOSED: "Đã đóng",
     };
     return map[status] || status;
   };
@@ -485,7 +645,7 @@ export function ComplaintPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold">Quản Lý Khiếu Nại</h2>
-        
+
         {/* Status Filter */}
         <div className="flex items-center gap-2">
           <Filter className="h-4 w-4 text-gray-500" />
@@ -507,7 +667,7 @@ export function ComplaintPage() {
 
       <div
         className="grid grid-cols-1 lg:grid-cols-3 gap-6"
-        style={{ height: 'calc(100vh - 12rem)' }}
+        style={{ height: "calc(100vh - 12rem)" }}
       >
         {/* Complaints List */}
         <div className="lg:col-span-1 bg-white rounded-lg shadow flex flex-col overflow-hidden">
@@ -542,49 +702,69 @@ export function ComplaintPage() {
                 <div className="divide-y">
                   {complaints.map((complaint) => {
                     // Màu border-left theo status
-                    const borderColor = 
-                      complaint.status === 'OPEN' ? 'border-blue-500' :
-                      complaint.status === 'IN_PROGRESS' ? 'border-yellow-500' :
-                      'border-gray-500';
-                    
-                    const bgColor = 
-                      selectedComplaint?.id === complaint.id ? 'bg-blue-50' :
-                      complaint.status === 'OPEN' ? 'hover:bg-blue-50/50' :
-                      complaint.status === 'IN_PROGRESS' ? 'hover:bg-yellow-50/50' :
-                      'hover:bg-gray-50';
-                    
+                    const borderColor =
+                      complaint.status === "OPEN"
+                        ? "border-blue-500"
+                        : complaint.status === "IN_PROGRESS"
+                        ? "border-yellow-500"
+                        : "border-gray-500";
+
+                    const bgColor =
+                      selectedComplaint?.complaintId === complaint.complaintId
+                        ? "bg-blue-50"
+                        : complaint.status === "OPEN"
+                        ? "hover:bg-blue-50/50"
+                        : complaint.status === "IN_PROGRESS"
+                        ? "hover:bg-yellow-50/50"
+                        : "hover:bg-gray-50";
+
                     return (
                       <button
-                        key={complaint.id}
+                        key={complaint.complaintId}
                         onClick={() => setSelectedComplaint(complaint)}
                         className={`w-full p-4 text-left transition-colors relative border-l-4 ${borderColor} ${bgColor}`}
                       >
-                      <div className="flex items-start gap-3">
-                        <div className="relative flex-shrink-0">
-                          <Avatar className="h-12 w-12">
-                            <AvatarImage
-                              src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${complaint.userId}`}
-                            />
-                            <AvatarFallback className="bg-[#007BFF] text-white">
-                              <AlertCircle className="h-6 w-6" />
-                            </AvatarFallback>
-                          </Avatar>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-medium truncate">
-                              {complaint.title}
-                            </span>
+                        <div className="flex items-start gap-3">
+                          <div className="relative flex-shrink-0">
+                            <Avatar className="h-12 w-12">
+                              <AvatarImage
+                                src={
+                                  complaint.avatarUrl ||
+                                  `https://api.dicebear.com/7.x/avataaars/svg?seed=${complaint.userId}`
+                                }
+                              />
+                              <AvatarFallback className="bg-[#007BFF] text-white">
+                                <AlertCircle className="h-6 w-6" />
+                              </AvatarFallback>
+                            </Avatar>
                           </div>
-                          <div className="flex items-center gap-2 mb-1">
-                            {getStatusBadge(complaint.status)}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-medium truncate">
+                                {complaint.title}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 mb-1">
+                              {getStatusBadge(complaint.status)}
+                              {complaint.fullName && (
+                                <span className="text-xs text-gray-500">
+                                  {complaint.fullName}
+                                </span>
+                              )}
+                            </div>
+                            {complaint.lastMessage && (
+                              <p className="text-sm text-gray-600 truncate mb-1">
+                                {complaint.lastMessage}
+                              </p>
+                            )}
+                            <p className="text-xs text-gray-400">
+                              {complaint.lastMessageAt
+                                ? formatTime(complaint.lastMessageAt)
+                                : getRelativeTime(complaint.createdAt)}
+                            </p>
                           </div>
-                          <p className="text-xs text-gray-400">
-                            {getRelativeTime(complaint.createdAt)}
-                          </p>
                         </div>
-                      </div>
-                    </button>
+                      </button>
                     );
                   })}
                 </div>
@@ -641,30 +821,57 @@ export function ComplaintPage() {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem
-                      onClick={() => handleUpdateStatus(selectedComplaint.id, 'OPEN')}
-                      disabled={selectedComplaint.status === 'OPEN'}
+                      onClick={() =>
+                        handleUpdateStatus(
+                          selectedComplaint.complaintId,
+                          "OPEN"
+                        )
+                      }
+                      disabled={selectedComplaint.status === "OPEN"}
                       className="cursor-pointer"
                     >
-                      {selectedComplaint.status === 'OPEN' && <Check className="h-4 w-4 mr-2" />}
-                      {selectedComplaint.status !== 'OPEN' && <div className="h-4 w-4 mr-2" />}
+                      {selectedComplaint.status === "OPEN" && (
+                        <Check className="h-4 w-4 mr-2" />
+                      )}
+                      {selectedComplaint.status !== "OPEN" && (
+                        <div className="h-4 w-4 mr-2" />
+                      )}
                       Đánh dấu Mở
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      onClick={() => handleUpdateStatus(selectedComplaint.id, 'IN_PROGRESS')}
-                      disabled={selectedComplaint.status === 'IN_PROGRESS'}
+                      onClick={() =>
+                        handleUpdateStatus(
+                          selectedComplaint.complaintId,
+                          "IN_PROGRESS"
+                        )
+                      }
+                      disabled={selectedComplaint.status === "IN_PROGRESS"}
                       className="cursor-pointer"
                     >
-                      {selectedComplaint.status === 'IN_PROGRESS' && <Check className="h-4 w-4 mr-2" />}
-                      {selectedComplaint.status !== 'IN_PROGRESS' && <div className="h-4 w-4 mr-2" />}
+                      {selectedComplaint.status === "IN_PROGRESS" && (
+                        <Check className="h-4 w-4 mr-2" />
+                      )}
+                      {selectedComplaint.status !== "IN_PROGRESS" && (
+                        <div className="h-4 w-4 mr-2" />
+                      )}
                       Đánh dấu Đang xử lý
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      onClick={() => handleUpdateStatus(selectedComplaint.id, 'CLOSED')}
-                      disabled={selectedComplaint.status === 'CLOSED'}
+                      onClick={() =>
+                        handleUpdateStatus(
+                          selectedComplaint.complaintId,
+                          "CLOSED"
+                        )
+                      }
+                      disabled={selectedComplaint.status === "CLOSED"}
                       className="cursor-pointer"
                     >
-                      {selectedComplaint.status === 'CLOSED' && <Check className="h-4 w-4 mr-2" />}
-                      {selectedComplaint.status !== 'CLOSED' && <div className="h-4 w-4 mr-2" />}
+                      {selectedComplaint.status === "CLOSED" && (
+                        <Check className="h-4 w-4 mr-2" />
+                      )}
+                      {selectedComplaint.status !== "CLOSED" && (
+                        <div className="h-4 w-4 mr-2" />
+                      )}
                       Đánh dấu Đã đóng
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -694,7 +901,9 @@ export function ComplaintPage() {
                       const isFromAdmin = isMessageFromAdmin(message);
                       const showDateSeparator =
                         index === 0 ||
-                        new Date(messages[index - 1].createdAt).toDateString() !==
+                        new Date(
+                          messages[index - 1].createdAt
+                        ).toDateString() !==
                           new Date(message.createdAt).toDateString();
 
                       return (
@@ -703,12 +912,15 @@ export function ComplaintPage() {
                           {showDateSeparator && (
                             <div className="flex items-center justify-center my-4">
                               <div className="bg-white px-3 py-1 rounded-full text-xs text-gray-500 shadow-sm">
-                                {new Date(message.createdAt).toLocaleDateString('vi-VN', {
-                                  weekday: 'long',
-                                  year: 'numeric',
-                                  month: 'long',
-                                  day: 'numeric',
-                                })}
+                                {new Date(message.createdAt).toLocaleDateString(
+                                  "vi-VN",
+                                  {
+                                    weekday: "long",
+                                    year: "numeric",
+                                    month: "long",
+                                    day: "numeric",
+                                  }
+                                )}
                               </div>
                             </div>
                           )}
@@ -716,7 +928,7 @@ export function ComplaintPage() {
                           {/* Message bubble */}
                           <div
                             className={`flex items-end gap-2 ${
-                              isFromAdmin ? 'justify-end' : 'justify-start'
+                              isFromAdmin ? "justify-end" : "justify-start"
                             }`}
                           >
                             {!isFromAdmin && (
@@ -733,35 +945,44 @@ export function ComplaintPage() {
                               <div
                                 className={`rounded-2xl px-4 py-2 shadow-sm ${
                                   isFromAdmin
-                                    ? 'bg-[#007BFF] text-white rounded-br-none'
-                                    : 'bg-white text-gray-900 rounded-bl-none border border-gray-200'
+                                    ? "bg-[#007BFF] text-white rounded-br-none"
+                                    : "bg-white text-gray-900 rounded-bl-none border border-gray-200"
                                 }`}
                               >
-                                {message.messageType === 'IMAGE' ? (
+                                {message.messageType === "IMAGE" ? (
                                   <div className="space-y-2">
                                     <img
                                       src={message.content}
                                       alt="Complaint attachment"
                                       className="max-w-full max-h-64 rounded-lg cursor-pointer object-contain"
-                                      onClick={() => window.open(message.content, '_blank')}
+                                      onClick={() =>
+                                        window.open(message.content, "_blank")
+                                      }
                                       onError={(e) => {
-                                        e.currentTarget.src = '';
-                                        e.currentTarget.alt = '❌ Lỗi tải hình ảnh';
+                                        e.currentTarget.src = "";
+                                        e.currentTarget.alt =
+                                          "❌ Lỗi tải hình ảnh";
                                       }}
                                     />
                                   </div>
                                 ) : (
-                                  <p className="break-words text-sm">{message.content}</p>
+                                  <p className="break-words text-sm">
+                                    {message.content}
+                                  </p>
                                 )}
                               </div>
-                              <div className={`flex items-center gap-1 mt-1 px-2 ${
-                                isFromAdmin ? 'self-end' : 'self-start'
-                              }`}>
+                              <div
+                                className={`flex items-center gap-1 mt-1 px-2 ${
+                                  isFromAdmin ? "self-end" : "self-start"
+                                }`}
+                              >
                                 <p className="text-xs text-gray-400">
                                   {formatTime(message.createdAt)}
                                 </p>
                                 {isFromAdmin && (
-                                  <span className="text-xs text-gray-400">✓</span>
+                                  <span className="text-xs text-gray-400">
+                                    ✓
+                                  </span>
                                 )}
                               </div>
                             </div>
@@ -791,7 +1012,7 @@ export function ComplaintPage() {
                     onChange={handleImageUpload}
                     className="hidden"
                   />
-                  
+
                   {/* Image upload button */}
                   <Button
                     variant="ghost"
@@ -813,7 +1034,7 @@ export function ComplaintPage() {
                     value={messageInput}
                     onChange={(e) => setMessageInput(e.target.value)}
                     onKeyPress={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
+                      if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
                         handleSendMessage();
                       }
@@ -823,13 +1044,17 @@ export function ComplaintPage() {
                   />
                   <Button
                     onClick={handleSendMessage}
-                    disabled={!messageInput.trim() || !isSocketConnected || isUploadingImage}
+                    disabled={
+                      !messageInput.trim() ||
+                      !isSocketConnected ||
+                      isUploadingImage
+                    }
                     className="bg-[#007BFF] hover:bg-[#0056b3] disabled:bg-gray-300 rounded-full h-10 w-10 p-0 flex-shrink-0"
                   >
                     <Send className="h-4 w-4" />
                   </Button>
                 </div>
-                
+
                 {/* WebSocket Status */}
                 {!isSocketConnected && (
                   <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
@@ -848,7 +1073,9 @@ export function ComplaintPage() {
                 <h3 className="text-lg font-medium text-gray-600 mb-2">
                   Quản lý khiếu nại
                 </h3>
-                <p className="text-sm">Chọn một khiếu nại để xem chi tiết và trả lời</p>
+                <p className="text-sm">
+                  Chọn một khiếu nại để xem chi tiết và trả lời
+                </p>
               </div>
             </div>
           )}
