@@ -1,19 +1,34 @@
-import { ArrowLeft, Minus, Plus, Save, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ArrowLeft, Minus, Plus, Save, Upload, X } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
-import { getCombo, createCombo, updateCombo } from '../../lib/services/equipment.service';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { getCombo, createCombo, updateCombo, getManyDevices } from '../../lib/services/equipment.service';
+import * as mediaService from '../../lib/services/media.service';
 import { toast } from 'sonner';
+
+interface DeviceItem {
+  deviceId: string;
+  quantity: number;
+}
 
 interface ComboFormData {
   name: string;
   price: number;
   description: string;
   images: string[];
+  deviceItems: DeviceItem[];
+}
+
+interface Device {
+  id: string;
+  name: string;
+  price: number;
+  status: string;
 }
 
 const initialFormData: ComboFormData = {
@@ -21,6 +36,7 @@ const initialFormData: ComboFormData = {
   price: 0,
   description: '',
   images: [],
+  deviceItems: [],
 };
 
 export function ComboFormPage() {
@@ -31,6 +47,14 @@ export function ComboFormPage() {
   const [formData, setFormData] = useState<ComboFormData>(initialFormData);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load available devices
+  useEffect(() => {
+    fetchDevices();
+  }, []);
 
   // Load combo data when editing
   useEffect(() => {
@@ -38,6 +62,16 @@ export function ComboFormPage() {
       fetchCombo();
     }
   }, [id, isNew]);
+
+  const fetchDevices = async () => {
+    try {
+      const response = await getManyDevices({ limit: 1000 }); // Get all devices
+      setDevices(response.devices || []);
+    } catch (error) {
+      console.error('Error fetching devices:', error);
+      toast.error('Không thể tải danh sách thiết bị');
+    }
+  };
 
   const fetchCombo = async () => {
     if (!id) return;
@@ -51,6 +85,10 @@ export function ComboFormPage() {
         price: combo.price || 0,
         description: combo.description || '',
         images: combo.images || [],
+        deviceItems: combo.devices?.map((d: any) => ({
+          deviceId: d.deviceId,
+          quantity: d.quantity
+        })) || [],
       });
       setImageUrls(combo.images || []);
     } catch (error) {
@@ -63,6 +101,13 @@ export function ComboFormPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate deviceItems
+    if (formData.deviceItems.length === 0) {
+      toast.error('Vui lòng thêm ít nhất 1 thiết bị vào combo');
+      return;
+    }
+
     setLoading(true);
     
     try {
@@ -71,6 +116,7 @@ export function ComboFormPage() {
         price: formData.price,
         description: formData.description,
         images: imageUrls,
+        deviceItems: formData.deviceItems,
       };
 
       console.log('Submitting combo data:', submitData);
@@ -93,15 +139,72 @@ export function ComboFormPage() {
     }
   };
 
-  const handleAddImage = () => {
-    const url = prompt('Nhập URL hình ảnh:');
-    if (url && url.trim()) {
-      setImageUrls([...imageUrls, url.trim()]);
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploadingImage(true);
+
+    try {
+      // Upload multiple files
+      const uploadPromises = Array.from(files).map(async (file) => {
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+          throw new Error(`${file.name} không phải là file ảnh`);
+        }
+
+        // Validate file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+          throw new Error(`${file.name} vượt quá 5MB`);
+        }
+
+        // Upload and get URL
+        const url = await mediaService.uploadImage(file);
+        return url;
+      });
+
+      const uploadedUrls = await Promise.all(uploadPromises);
+      setImageUrls([...imageUrls, ...uploadedUrls]);
+      toast.success(`Đã upload ${uploadedUrls.length} ảnh thành công`);
+
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (error: any) {
+      console.error('Error uploading images:', error);
+      toast.error(error.message || 'Không thể upload ảnh');
+    } finally {
+      setIsUploadingImage(false);
     }
   };
 
   const handleRemoveImage = (index: number) => {
     setImageUrls(imageUrls.filter((_, i) => i !== index));
+  };
+
+  const handleAddDeviceItem = () => {
+    setFormData({
+      ...formData,
+      deviceItems: [...formData.deviceItems, { deviceId: '', quantity: 1 }]
+    });
+  };
+
+  const handleRemoveDeviceItem = (index: number) => {
+    setFormData({
+      ...formData,
+      deviceItems: formData.deviceItems.filter((_, i) => i !== index)
+    });
+  };
+
+  const handleDeviceItemChange = (index: number, field: 'deviceId' | 'quantity', value: string | number) => {
+    const newDeviceItems = [...formData.deviceItems];
+    if (field === 'deviceId') {
+      newDeviceItems[index].deviceId = value as string;
+    } else {
+      newDeviceItems[index].quantity = value as number;
+    }
+    setFormData({ ...formData, deviceItems: newDeviceItems });
   };
 
   return (
@@ -141,11 +244,13 @@ export function ComboFormPage() {
                 <Label htmlFor="price">Giá (VNĐ) *</Label>
                 <Input
                   id="price"
-                  type="number"
-                  value={formData.price}
-                  onChange={(e) => setFormData({ ...formData, price: parseInt(e.target.value) || 0 })}
+                  type="text"
+                  value={formData.price === 0 ? '' : formData.price}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/[^0-9]/g, '');
+                    setFormData({ ...formData, price: value ? parseInt(value) : 0 });
+                  }}
                   placeholder="500000"
-                  min="0"
                   required
                   disabled={loading}
                 />
@@ -166,47 +271,122 @@ export function ComboFormPage() {
           </CardContent>
         </Card>
 
-        {/* Note: Device management removed - API handles this separately */}
+        {/* Device Items */}
         <Card>
           <CardHeader>
-            <CardTitle>Lưu ý</CardTitle>
+            <CardTitle>Thiết Bị Trong Combo *</CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="text-sm text-gray-600">
-              Quản lý thiết bị trong combo sẽ được thực hiện thông qua API riêng biệt sau khi tạo combo.
-            </p>
+          <CardContent className="space-y-4">
+            <Button 
+              type="button" 
+              onClick={handleAddDeviceItem} 
+              variant="outline" 
+              disabled={loading}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Thêm Thiết Bị
+            </Button>
+
+            {formData.deviceItems.length === 0 && (
+              <p className="text-sm text-gray-500">Chưa có thiết bị nào. Vui lòng thêm ít nhất 1 thiết bị.</p>
+            )}
+
+            {formData.deviceItems.map((item, index) => (
+              <div key={index} className="flex gap-4 items-end border p-4 rounded-lg">
+                <div className="flex-1 space-y-2">
+                  <Label>Thiết Bị *</Label>
+                  <Select
+                    value={item.deviceId}
+                    onValueChange={(value) => handleDeviceItemChange(index, 'deviceId', value)}
+                    disabled={loading}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Chọn thiết bị" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {devices.map((device) => (
+                        <SelectItem key={device.id} value={device.id}>
+                          {device.name} - {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(device.price)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="w-32 space-y-2">
+                  <Label>Số Lượng *</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={item.quantity}
+                    onChange={(e) => handleDeviceItemChange(index, 'quantity', parseInt(e.target.value) || 1)}
+                    disabled={loading}
+                  />
+                </div>
+
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="icon"
+                  onClick={() => handleRemoveDeviceItem(index)}
+                  disabled={loading}
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
           </CardContent>
         </Card>
 
         {/* Images */}
         <Card>
           <CardHeader>
-            <CardTitle>Hình Ảnh</CardTitle>
+            <CardTitle>Hình Ảnh Combo</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button type="button" onClick={handleAddImage} variant="outline" disabled={loading}>
-              <Plus className="h-4 w-4 mr-2" />
-              Thêm URL Hình Ảnh
-            </Button>
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleImageUpload}
+                className="hidden"
+                disabled={isUploadingImage || loading}
+              />
+              <Button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploadingImage || loading}
+                variant="outline"
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                {isUploadingImage ? 'Đang upload...' : 'Upload Hình Ảnh'}
+              </Button>
+              <p className="text-sm text-gray-500 mt-2">Chọn một hoặc nhiều ảnh (tối đa 5MB mỗi ảnh)</p>
+            </div>
 
             {imageUrls.length > 0 && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
                 {imageUrls.map((url, index) => (
-                  <div key={index} className="relative group">
-                    <img
-                      src={url}
-                      alt={`Combo ${index + 1}`}
-                      className="w-full h-24 object-cover rounded-lg"
-                      onError={(e) => {
-                        e.currentTarget.src = 'https://via.placeholder.com/150';
-                      }}
-                    />
+                  <div key={index} className="relative group border rounded-lg overflow-hidden bg-gray-50">
+                    <div className="aspect-square flex items-center justify-center p-2">
+                      <img
+                        src={url}
+                        alt={`Combo ${index + 1}`}
+                        className="max-w-full max-h-full object-contain"
+                        onError={(e) => {
+                          e.currentTarget.src = 'https://via.placeholder.com/300x200?text=Image+Not+Found';
+                        }}
+                      />
+                    </div>
                     <button
                       type="button"
                       onClick={() => handleRemoveImage(index)}
-                      className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                      disabled={loading}
+                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                     >
-                      <X className="h-3 w-3" />
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
                 ))}

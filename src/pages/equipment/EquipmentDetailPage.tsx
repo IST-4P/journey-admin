@@ -295,8 +295,6 @@ export function EquipmentDetailPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="AVAILABLE">Có sẵn</SelectItem>
-                  <SelectItem value="In Stock">In Stock</SelectItem>
-                  <SelectItem value="Low Stock">Low Stock</SelectItem>
                   <SelectItem value="Unavailable">Không có sẵn</SelectItem>
                 </SelectContent>
               </Select>
@@ -305,9 +303,12 @@ export function EquipmentDetailPage() {
             <div>
               <Label>Giá (VNĐ) *</Label>
               <Input
-                type="number"
-                value={formData.price}
-                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                type="text"
+                value={formData.price === '' || formData.price === '0' ? '' : formData.price}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/[^0-9]/g, '');
+                  setFormData({ ...formData, price: value });
+                }}
                 placeholder="50000"
                 required
                 disabled={loading}

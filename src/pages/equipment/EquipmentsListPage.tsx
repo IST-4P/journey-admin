@@ -2,6 +2,8 @@ import { ChevronDown, ChevronUp, Edit, Eye, Filter, Plus, Search, Trash2, X } fr
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Pagination } from '../../components/common/Pagination';
+import { DeleteEquipmentDialog } from '../../components/equipment/DeleteEquipmentDialog';
+import { DeleteComboDialog } from '../../components/equipment/DeleteComboDialog';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -119,30 +121,12 @@ export function EquipmentsListPage() {
     fetchCombos();
   }, [comboCurrentPage, comboSearchQuery]);
 
-  const handleDeleteDevice = async (id: string) => {
-    if (!confirm('Bạn có chắc chắn muốn xóa thiết bị này?')) return;
-    
-    try {
-      await deleteDevice(id);
-      toast.success('Xóa thiết bị thành công');
-      fetchDevices();
-    } catch (error) {
-      console.error('Error deleting device:', error);
-      toast.error('Không thể xóa thiết bị');
-    }
+  const handleDeleteDeviceConfirm = () => {
+    fetchDevices();
   };
 
-  const handleDeleteCombo = async (id: string) => {
-    if (!confirm('Bạn có chắc chắn muốn xóa combo này?')) return;
-    
-    try {
-      await deleteCombo(id);
-      toast.success('Xóa combo thành công');
-      fetchCombos();
-    } catch (error) {
-      console.error('Error deleting combo:', error);
-      toast.error('Không thể xóa combo');
-    }
+  const handleDeleteComboConfirm = () => {
+    fetchCombos();
   };
 
   const clearFilters = () => {
@@ -347,13 +331,11 @@ export function EquipmentsListPage() {
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => handleDeleteDevice(equipment.id)}
-                          >
-                            <Trash2 className="h-4 w-4 text-red-600" />
-                          </Button>
+                          <DeleteEquipmentDialog
+                            deviceId={equipment.id}
+                            deviceName={equipment.name}
+                            onConfirm={handleDeleteDeviceConfirm}
+                          />
                         </div>
                       </TableCell>
                     </TableRow>
@@ -435,13 +417,11 @@ export function EquipmentsListPage() {
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => handleDeleteCombo(combo.id)}
-                          >
-                            <Trash2 className="h-4 w-4 text-red-600" />
-                          </Button>
+                          <DeleteComboDialog
+                            comboId={combo.id}
+                            comboName={combo.name}
+                            onConfirm={handleDeleteComboConfirm}
+                          />
                         </div>
                       </TableCell>
                     </TableRow>
