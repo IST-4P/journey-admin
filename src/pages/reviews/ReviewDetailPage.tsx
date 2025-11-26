@@ -1,84 +1,73 @@
-import { ArrowLeft, Save, Star, Upload, X } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowLeft, Star } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
-import { Input } from '../../components/ui/input';
-import { Label } from '../../components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../components/ui/select';
-import { Textarea } from '../../components/ui/textarea';
-import { mockCombos, mockEquipment, mockReviews, mockUsers, mockVehicles } from '../../lib/mockData';
+import { getReview, type Review } from '../../lib/services/review.service';
+import { toast } from 'sonner';
 
 export function ReviewDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const isNew = id === 'new';
-  const isEdit = window.location.pathname.includes('/edit');
+  const [review, setReview] = useState<Review | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const reviewData = isNew ? null : mockReviews.find((r) => r.id === Number(id));
+  useEffect(() => {
+    if (id && id !== 'new') {
+      fetchReview();
+    }
+  }, [id]);
 
-  const [formData, setFormData] = useState({
-    userId: reviewData?.userId || 1,
-    type: reviewData?.type || 'car',
-    itemId: reviewData?.itemId || 1,
-    title: reviewData?.title || '',
-    rating: reviewData?.rating || 5,
-    comment: reviewData?.comment || '',
-    images: reviewData?.images || [],
-  });
-
-  const handleSave = () => {
-    // In a real app, save to backend
-    navigate('/reviews');
-  };
-
-  const handleAddImage = () => {
-    const url = prompt('Nhập URL hình ảnh:');
-    if (url && url.trim()) {
-      setFormData({
-        ...formData,
-        images: [...formData.images, url.trim()],
-      });
+  const fetchReview = async () => {
+    if (!id) return;
+    setLoading(true);
+    try {
+      const data = await getReview(id);
+      console.log('Review detail:', data);
+      setReview(data);
+    } catch (error) {
+      console.error('Error fetching review:', error);
+      toast.error('Không thể tải thông tin đánh giá');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleRemoveImage = (index: number) => {
-    setFormData({
-      ...formData,
-      images: formData.images.filter((_, i) => i !== index),
+  const getReviewType = () => {
+    if (!review) return 'Khác';
+    if (review.deviceId) return 'Thiết Bị';
+    if (review.bookingId) return 'Booking';
+    if (review.rentalId) return 'Rental';
+    return 'Khác';
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('vi-VN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
     });
   };
 
-  const viewMode = !isNew && !isEdit;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">Đang tải...</div>
+      </div>
+    );
+  }
 
-  // Get items based on type
-  const getAvailableItems = () => {
-    switch (formData.type) {
-      case 'car':
-        return mockVehicles.filter(v => v.type === 'car').slice(0, 20);
-      case 'motorbike':
-        return mockVehicles.filter(v => v.type === 'motorbike').slice(0, 20);
-      case 'equipment':
-        return mockEquipment.slice(0, 20);
-      case 'combo':
-        return mockCombos;
-      default:
-        return [];
-    }
-  };
-
-  const getCurrentItemName = () => {
-    const items = getAvailableItems();
-    const item = items.find((i) => i.id === formData.itemId);
-    return item?.name || '';
-  };
+  if (!review) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">Không tìm thấy đánh giá</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -87,18 +76,8 @@ export function ReviewDetailPage() {
           <Button variant="ghost" onClick={() => navigate('/reviews')}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h2 className="text-2xl">
-            {isNew ? 'Tạo Đánh Giá Mới' : isEdit ? 'Chỉnh Sửa Đánh Giá' : 'Chi Tiết Đánh Giá'}
-          </h2>
+          <h2 className="text-2xl">Chi Tiết Đánh Giá</h2>
         </div>
-        {viewMode && (
-          <Button
-            onClick={() => navigate(`/reviews/${id}/edit`)}
-            className="bg-[#007BFF] hover:bg-[#0056b3]"
-          >
-            Chỉnh Sửa
-          </Button>
-        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -110,234 +89,124 @@ export function ReviewDetailPage() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="userId">Người Đánh Giá *</Label>
-                {viewMode ? (
-                  <p className="mt-1">
-                    {mockUsers.find((u) => u.id === formData.userId)?.name || ''}
-                  </p>
-                ) : (
-                  <Select
-                    value={String(formData.userId)}
-                    onValueChange={(value) => setFormData({ ...formData, userId: Number(value) })}
-                  >
-                    <SelectTrigger className="mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {mockUsers.slice(0, 20).map((user) => (
-                        <SelectItem key={user.id} value={String(user.id)}>
-                          {user.name} ({user.email})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+                <p className="text-sm text-gray-600 mb-1">ID Đánh Giá</p>
+                <p className="font-mono text-sm">{review.id}</p>
               </div>
 
               <div>
-                <Label htmlFor="type">Loại *</Label>
-                {viewMode ? (
-                  <p className="mt-1">
-                    <Badge variant="outline">
-                      {formData.type === 'car' ? 'Ô Tô' : formData.type === 'motorbike' ? 'Xe Máy' : formData.type === 'equipment' ? 'Thiết Bị' : 'Combo'}
-                    </Badge>
-                  </p>
-                ) : (
-                  <Select
-                    value={formData.type}
-                    onValueChange={(value: 'car' | 'motorbike' | 'equipment' | 'combo') =>
-                      setFormData({ ...formData, type: value, itemId: 1 })
-                    }
-                  >
-                    <SelectTrigger className="mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="car">Ô Tô</SelectItem>
-                      <SelectItem value="motorbike">Xe Máy</SelectItem>
-                      <SelectItem value="equipment">Thiết Bị</SelectItem>
-                      <SelectItem value="combo">Combo</SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
+                <p className="text-sm text-gray-600 mb-1">Loại</p>
+                <Badge variant="outline">{getReviewType()}</Badge>
+              </div>
+
+              <div>
+                <p className="text-sm text-gray-600 mb-1">ID Người Dùng</p>
+                <p className="font-mono text-sm">{review.userId}</p>
+              </div>
+
+              {review.deviceId && (
+                <div>
+                  <p className="text-sm text-gray-600 mb-1">ID Thiết Bị</p>
+                  <p className="font-mono text-sm">{review.deviceId}</p>
+                </div>
+              )}
+
+              {review.bookingId && (
+                <div>
+                  <p className="text-sm text-gray-600 mb-1">ID Booking</p>
+                  <p className="font-mono text-sm">{review.bookingId}</p>
+                </div>
+              )}
+
+              {review.rentalId && (
+                <div>
+                  <p className="text-sm text-gray-600 mb-1">ID Rental</p>
+                  <p className="font-mono text-sm">{review.rentalId}</p>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <p className="text-sm text-gray-600 mb-1">Tiêu Đề</p>
+              <p className="text-lg font-medium">{review.title}</p>
+            </div>
+
+            <div>
+              <p className="text-sm text-gray-600 mb-2">Số Sao</p>
+              <div className="flex items-center">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Star
+                    key={i}
+                    className={`h-6 w-6 ${
+                      i < review.rating
+                        ? 'fill-yellow-400 text-yellow-400'
+                        : 'fill-gray-200 text-gray-200'
+                    }`}
+                  />
+                ))}
+                <span className="ml-2 text-lg font-medium">{review.rating} / 5</span>
               </div>
             </div>
 
             <div>
-              <Label htmlFor="itemId">
-                {formData.type === 'car' ? 'Ô Tô' : formData.type === 'motorbike' ? 'Xe Máy' : formData.type === 'equipment' ? 'Thiết Bị' : 'Combo'} *
-              </Label>
-              {viewMode ? (
-                <p className="mt-1">{getCurrentItemName()}</p>
-              ) : (
-                <Select
-                  value={String(formData.itemId)}
-                  onValueChange={(value) => setFormData({ ...formData, itemId: Number(value) })}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {getAvailableItems().map((item) => (
-                      <SelectItem key={item.id} value={String(item.id)}>
-                        {item.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="title">Tiêu Đề *</Label>
-              {viewMode ? (
-                <p className="mt-2">{formData.title}</p>
-              ) : (
-                <Input
-                  id="title"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="mt-1"
-                  placeholder="Nhập tiêu đề đánh giá..."
-                  required
-                />
-              )}
-            </div>
-
-            <div>
-              <Label>Số Sao *</Label>
-              {viewMode ? (
-                <div className="flex items-center mt-2">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Star
-                      key={i}
-                      className={`h-6 w-6 ${
-                        i < formData.rating
-                          ? 'fill-yellow-400 text-yellow-400'
-                          : 'fill-gray-200 text-gray-200'
-                      }`}
-                    />
-                  ))}
-                  <span className="ml-2 text-lg">{formData.rating}</span>
-                </div>
-              ) : (
-                <div className="flex items-center space-x-2 mt-2">
-                  {[1, 2, 3, 4, 5].map((rating) => (
-                    <button
-                      key={rating}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, rating })}
-                      className="focus:outline-none"
-                    >
-                      <Star
-                        className={`h-8 w-8 cursor-pointer transition-colors ${
-                          rating <= formData.rating
-                            ? 'fill-yellow-400 text-yellow-400'
-                            : 'fill-gray-200 text-gray-200 hover:fill-yellow-200 hover:text-yellow-200'
-                        }`}
-                      />
-                    </button>
-                  ))}
-                  <span className="ml-2">{formData.rating} sao</span>
-                </div>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="comment">Nhận Xét</Label>
-              {viewMode ? (
-                <p className="mt-2 whitespace-pre-wrap">{formData.comment}</p>
-              ) : (
-                <Textarea
-                  id="comment"
-                  value={formData.comment}
-                  onChange={(e) => setFormData({ ...formData, comment: e.target.value })}
-                  rows={6}
-                  className="mt-1"
-                  placeholder="Nhập nhận xét chi tiết..."
-                />
-              )}
+              <p className="text-sm text-gray-600 mb-1">Nội Dung</p>
+              <p className="whitespace-pre-wrap">{review.content}</p>
             </div>
 
             {/* Images */}
             <div>
-              <Label>Hình Ảnh</Label>
-              {!viewMode && (
-                <Button
-                  type="button"
-                  onClick={handleAddImage}
-                  variant="outline"
-                  className="mt-2 mb-3"
-                  size="sm"
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Thêm Hình Ảnh
-                </Button>
-              )}
-
-              {formData.images.length > 0 ? (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
-                  {formData.images.map((url, index) => (
+              <p className="text-sm text-gray-600 mb-2">Hình Ảnh ({review.images.length})</p>
+              {review.images.length > 0 ? (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {review.images.map((url, index) => (
                     <div key={index} className="relative group">
                       <img
                         src={url}
                         alt={`Review ${index + 1}`}
-                        className="w-full h-24 object-cover rounded-lg"
+                        className="w-full h-32 object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                        onClick={() => window.open(url, '_blank')}
                         onError={(e) => {
-                          e.currentTarget.src = 'https://via.placeholder.com/150';
+                          e.currentTarget.src = 'https://via.placeholder.com/300x200?text=Image+Not+Found';
                         }}
                       />
-                      {!viewMode && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveImage(index)}
-                          className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      )}
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-gray-500 mt-2">Chưa có hình ảnh</p>
+                <p className="text-sm text-gray-500">Chưa có hình ảnh</p>
               )}
             </div>
 
-            {reviewData && (
-              <div className="text-sm text-gray-600 pt-4 border-t space-y-1">
-                <p>Ngày tạo: {reviewData.date}</p>
-                <p>Ngày chỉnh sửa: {reviewData.updatedDate}</p>
-              </div>
-            )}
+            <div className="text-sm text-gray-600 pt-4 border-t space-y-1">
+              <p>Ngày tạo: {formatDate(review.createdAt)}</p>
+              <p>Ngày cập nhật: {formatDate(review.updatedAt)}</p>
+              {review.updateCount !== undefined && review.updateCount > 0 && (
+                <p>Số lần cập nhật: {review.updateCount}</p>
+              )}
+              {review.type !== undefined && (
+                <p>Type: {review.type}</p>
+              )}
+            </div>
           </CardContent>
         </Card>
 
-        {/* Info */}
+        {/* Side Info */}
         <Card>
           <CardHeader>
-            <CardTitle>Thông Tin</CardTitle>
+            <CardTitle>Thông Tin Khác</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <p className="text-sm text-gray-600 mb-2">Người dùng có thể đăng tải đánh giá tự do</p>
-              <p className="text-sm text-gray-500">Không cần phê duyệt</p>
+              <p className="text-sm text-gray-600 mb-2">Trạng thái</p>
+              <Badge className="bg-green-500">Đã đăng</Badge>
+            </div>
+            <div className="pt-4 border-t">
+              <p className="text-sm text-gray-500">
+                Đánh giá từ người dùng về trải nghiệm sử dụng dịch vụ.
+              </p>
             </div>
           </CardContent>
         </Card>
       </div>
-
-      {!viewMode && (
-        <div className="flex justify-end space-x-4">
-          <Button variant="outline" onClick={() => navigate('/reviews')}>
-            Hủy
-          </Button>
-          <Button onClick={handleSave} className="bg-[#007BFF] hover:bg-[#0056b3]">
-            <Save className="h-4 w-4 mr-2" />
-            Lưu
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

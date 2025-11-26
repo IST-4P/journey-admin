@@ -29,8 +29,6 @@ import { RentalDetailPage } from "./pages/rentals/RentalDetailPage";
 import { RentalsListPage } from "./pages/rentals/RentalsListPage";
 import { ReviewDetailPage } from "./pages/reviews/ReviewDetailPage";
 import { ReviewsListPage } from "./pages/reviews/ReviewsListPage";
-import { ReportsPage } from "./pages/system/ReportsPage";
-import { SettingsPage } from "./pages/system/SettingsPage";
 import { UserDetailPage } from "./pages/users/UserDetailPage";
 import { UsersListPage } from "./pages/users/UsersListPage";
 import { VehicleDetailPage } from "./pages/vehicles/VehicleDetailPage";
@@ -205,11 +203,6 @@ export default function App() {
                 <Route path="/notifications" element={<NotificationsPage />} />
                 <Route path="/chat" element={<ChatPage />} />
                 <Route path="/complaints" element={<ComplaintPage />} />
-
-                {/* System */}
-                <Route path="/system" element={<ReportsPage />} />
-                <Route path="/system/reports" element={<ReportsPage />} />
-                <Route path="/system/settings" element={<SettingsPage />} />
 
                 {/* Legacy routes - redirect to new structure */}
                 <Route
