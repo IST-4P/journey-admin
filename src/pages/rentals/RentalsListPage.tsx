@@ -1,19 +1,19 @@
-import { Eye, Filter, Search, X } from 'lucide-react';
-import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
-import toast from 'react-hot-toast';
-import { Pagination } from '../../components/common/Pagination';
-import { Badge } from '../../components/ui/badge';
-import { Button } from '../../components/ui/button';
-import { Input } from '../../components/ui/input';
-import { Label } from '../../components/ui/label';
+import { Eye, Filter, Search, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import toast from "react-hot-toast";
+import { Link } from "react-router-dom";
+import { Pagination } from "../../components/common/Pagination";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '../../components/ui/select';
+} from "../../components/ui/select";
 import {
   Table,
   TableBody,
@@ -21,21 +21,27 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '../../components/ui/table';
-import * as bookingService from '../../lib/services/booking.service';
-import type { Booking, BookingStatus, BookingStatistics } from '../../lib/types/booking.types';
+} from "../../components/ui/table";
+import * as bookingService from "../../lib/services/booking.service";
+import type {
+  Booking,
+  BookingStatistics,
+  BookingStatus,
+} from "../../lib/types/booking.types";
 
 const ITEMS_PER_PAGE = 10;
 
 export function RentalsListPage() {
   const [currentPage, setCurrentPage] = useState(1);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<BookingStatus | 'all'>('all');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<BookingStatus | "all">(
+    "all"
+  );
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  const [startDateFrom, setStartDateFrom] = useState('');
-  const [startDateTo, setStartDateTo] = useState('');
-  
+  const [startDateFrom, setStartDateFrom] = useState("");
+  const [startDateTo, setStartDateTo] = useState("");
+
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [totalPages, setTotalPages] = useState(1);
@@ -66,7 +72,7 @@ export function RentalsListPage() {
         limit: ITEMS_PER_PAGE,
       };
 
-      if (statusFilter !== 'all') {
+      if (statusFilter !== "all") {
         params.status = statusFilter;
       }
       if (startDateFrom) {
@@ -76,10 +82,10 @@ export function RentalsListPage() {
         params.startTimeTo = new Date(startDateTo).toISOString();
       }
 
-      console.log('Fetching bookings with params:', params);
+      console.log("Fetching bookings with params:", params);
       const response = await bookingService.getManyBookings(params);
-      console.log('Bookings response:', response);
-      
+      console.log("Bookings response:", response);
+
       // Filter by search query on client side (if backend doesn't support it)
       let filteredBookings = response.bookings;
       if (debouncedSearchQuery.trim()) {
@@ -91,21 +97,27 @@ export function RentalsListPage() {
             booking.vehicleId.toLowerCase().includes(query)
         );
       }
-      
+
       setBookings(filteredBookings);
       setTotalPages(response.totalPages);
       setTotalItems(response.totalItems);
     } catch (error: any) {
-      console.error('Error loading bookings:', error);
-      console.error('Error details:', error.response?.data);
-      toast.error('Không thể tải danh sách đơn thuê');
+      console.error("Error loading bookings:", error);
+      console.error("Error details:", error.response?.data);
+      toast.error("Không thể tải danh sách đơn thuê");
       setBookings([]);
       setTotalPages(1);
       setTotalItems(0);
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, statusFilter, startDateFrom, startDateTo, debouncedSearchQuery]);
+  }, [
+    currentPage,
+    statusFilter,
+    startDateFrom,
+    startDateTo,
+    debouncedSearchQuery,
+  ]);
 
   useEffect(() => {
     loadBookings();
@@ -117,54 +129,80 @@ export function RentalsListPage() {
       const data = await bookingService.getBookingStats();
       setStats(data);
     } catch (error) {
-      console.error('Error loading stats:', error);
+      console.error("Error loading stats:", error);
     }
   };
 
   // Check if any advanced filters are active
-  const hasActiveFilters = startDateFrom !== '' || startDateTo !== '';
+  const hasActiveFilters = startDateFrom !== "" || startDateTo !== "";
 
   // Reset all filters
   const resetFilters = () => {
-    setSearchQuery('');
-    setStatusFilter('all');
-    setStartDateFrom('');
-    setStartDateTo('');
+    setSearchQuery("");
+    setStatusFilter("all");
+    setStartDateFrom("");
+    setStartDateTo("");
     setCurrentPage(1);
   };
 
   // Format currency
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('vi-VN', {
-      style: 'currency',
-      currency: 'VND',
+    return new Intl.NumberFormat("vi-VN", {
+      style: "currency",
+      currency: "VND",
     }).format(value);
   };
 
   // Format date and time
   const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('vi-VN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
+    return new Date(dateString).toLocaleDateString("vi-VN", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
   // Get status badge
   const getStatusBadge = (status: BookingStatus) => {
-    const statusConfig = {
-      PENDING: { label: 'Chờ Thanh Toán', className: 'bg-yellow-100 text-yellow-800' },
-      DEPOSIT_PAID: { label: 'Đã Cọc', className: 'bg-blue-100 text-blue-800' },
-      FULLY_PAID: { label: 'Đã Thanh Toán', className: 'bg-green-100 text-green-800' },
-      ONGOING: { label: 'Đang Thuê', className: 'bg-purple-100 text-purple-800' },
-      COMPLETED: { label: 'Hoàn Thành', className: 'bg-gray-100 text-gray-800' },
-      CANCELLED: { label: 'Đã Hủy', className: 'bg-red-100 text-red-800' },
-      EXPIRED: { label: 'Hết Hạn', className: 'bg-orange-100 text-orange-800' },
-      OVERDUE: { label: 'Quá Hạn', className: 'bg-red-100 text-red-800' },
+    const statusConfig: Record<
+      BookingStatus,
+      { label: string; className: string }
+    > = {
+      PENDING: {
+        label: "Chờ Thanh Toán",
+        className: "bg-yellow-100 text-yellow-800",
+      },
+      PENDING_VERIFY: {
+        label: "Chờ Xác Minh",
+        className: "bg-orange-100 text-orange-800",
+      },
+      DEPOSIT_PAID: { label: "Đã Cọc", className: "bg-blue-100 text-blue-800" },
+      READY_FOR_CHECKIN: {
+        label: "Sẵn Sàng Nhận Xe",
+        className: "bg-cyan-100 text-cyan-800",
+      },
+      FULLY_PAID: {
+        label: "Đã Thanh Toán",
+        className: "bg-green-100 text-green-800",
+      },
+      ONGOING: {
+        label: "Đang Thuê",
+        className: "bg-purple-100 text-purple-800",
+      },
+      COMPLETED: {
+        label: "Hoàn Thành",
+        className: "bg-gray-100 text-gray-800",
+      },
+      CANCELLED: { label: "Đã Hủy", className: "bg-red-100 text-red-800" },
+      EXPIRED: { label: "Hết Hạn", className: "bg-orange-100 text-orange-800" },
+      OVERDUE: { label: "Quá Hạn", className: "bg-red-100 text-red-800" },
     };
-    const config = statusConfig[status];
+    const config = statusConfig[status] || {
+      label: status,
+      className: "bg-gray-100 text-gray-800",
+    };
     return <Badge className={config.className}>{config.label}</Badge>;
   };
 
@@ -195,23 +233,33 @@ export function RentalsListPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-blue-500">
           <p className="text-sm text-gray-600">Tổng Đơn</p>
-          <p className="text-2xl font-bold text-gray-800">{stats.totalBookings}</p>
+          <p className="text-2xl font-bold text-gray-800">
+            {stats.totalBookings}
+          </p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-yellow-500">
           <p className="text-sm text-gray-600">Chờ Thanh Toán</p>
-          <p className="text-2xl font-bold text-yellow-600">{stats.pendingBookings}</p>
+          <p className="text-2xl font-bold text-yellow-600">
+            {stats.pendingBookings}
+          </p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-purple-500">
           <p className="text-sm text-gray-600">Đang Thuê</p>
-          <p className="text-2xl font-bold text-purple-600">{stats.ongoingBookings}</p>
+          <p className="text-2xl font-bold text-purple-600">
+            {stats.ongoingBookings}
+          </p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-green-500">
           <p className="text-sm text-gray-600">Hoàn Thành</p>
-          <p className="text-2xl font-bold text-green-600">{stats.completedBookings}</p>
+          <p className="text-2xl font-bold text-green-600">
+            {stats.completedBookings}
+          </p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-red-500">
           <p className="text-sm text-gray-600">Đã Hủy</p>
-          <p className="text-2xl font-bold text-red-600">{stats.cancelledBookings}</p>
+          <p className="text-2xl font-bold text-red-600">
+            {stats.cancelledBookings}
+          </p>
         </div>
       </div>
 
@@ -233,7 +281,7 @@ export function RentalsListPage() {
 
           <Select
             value={statusFilter}
-            onValueChange={(value: BookingStatus | 'all') => {
+            onValueChange={(value: BookingStatus | "all") => {
               setStatusFilter(value);
               setCurrentPage(1);
             }}
@@ -264,7 +312,11 @@ export function RentalsListPage() {
           </Button>
 
           {hasActiveFilters && (
-            <Button variant="ghost" onClick={resetFilters} className="w-full md:w-auto">
+            <Button
+              variant="ghost"
+              onClick={resetFilters}
+              className="w-full md:w-auto"
+            >
               <X className="h-4 w-4 mr-2" />
               Xóa Bộ Lọc
             </Button>
@@ -328,26 +380,34 @@ export function RentalsListPage() {
                   </TableCell>
                   <TableCell>
                     <div>
-                      <p className="text-xs text-gray-500">ID: {booking.userId.substring(0, 8)}...</p>
+                      <p className="text-xs text-gray-500">
+                        ID: {booking.userId.substring(0, 8)}...
+                      </p>
                     </div>
                   </TableCell>
                   <TableCell>
                     <div>
-                      <p className="text-xs text-gray-500">ID: {booking.vehicleId.substring(0, 8)}...</p>
+                      <p className="text-xs text-gray-500">
+                        ID: {booking.vehicleId.substring(0, 8)}...
+                      </p>
                     </div>
                   </TableCell>
                   <TableCell className="text-sm">
                     <div>
                       <p>{formatDateTime(booking.startTime)}</p>
-                      <p className="text-gray-500">{formatDateTime(booking.endTime)}</p>
+                      <p className="text-gray-500">
+                        {formatDateTime(booking.endTime)}
+                      </p>
                     </div>
                   </TableCell>
                   <TableCell className="text-sm">
-                    {booking.duration >= 24 
-                      ? `${Math.floor(booking.duration / 24)} ngày` 
+                    {booking.duration >= 24
+                      ? `${Math.floor(booking.duration / 24)} ngày`
                       : `${booking.duration} giờ`}
                   </TableCell>
-                  <TableCell className="font-medium">{formatCurrency(booking.totalAmount)}</TableCell>
+                  <TableCell className="font-medium">
+                    {formatCurrency(booking.totalAmount)}
+                  </TableCell>
                   <TableCell>{getStatusBadge(booking.status)}</TableCell>
                   <TableCell className="text-sm text-gray-600">
                     {formatDateTime(booking.createdAt)}
@@ -363,7 +423,10 @@ export function RentalsListPage() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-gray-500 py-8">
+                <TableCell
+                  colSpan={9}
+                  className="text-center text-gray-500 py-8"
+                >
                   Không tìm thấy đơn thuê nào
                 </TableCell>
               </TableRow>
@@ -374,7 +437,11 @@ export function RentalsListPage() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+        />
       )}
     </div>
   );

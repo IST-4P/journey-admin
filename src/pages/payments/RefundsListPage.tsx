@@ -1,13 +1,19 @@
-import { Eye, Search, Download } from 'lucide-react';
-import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
-import toast from 'react-hot-toast';
-import * as XLSX from 'xlsx';
-import { Pagination } from '../../components/common/Pagination';
-import { Badge } from '../../components/ui/badge';
-import { Button } from '../../components/ui/button';
-import { Input } from '../../components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { Check, Download, Eye, Search, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import toast from "react-hot-toast";
+import { Link } from "react-router-dom";
+import * as XLSX from "xlsx";
+import { Pagination } from "../../components/common/Pagination";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../components/ui/select";
 import {
   Table,
   TableBody,
@@ -15,17 +21,17 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '../../components/ui/table';
-import * as refundService from '../../lib/services/refund.service';
-import type { Refund, RefundStatus } from '../../lib/types/refund.types';
+} from "../../components/ui/table";
+import * as refundService from "../../lib/services/refund.service";
+import type { Refund, RefundStatus } from "../../lib/types/refund.types";
 
 const ITEMS_PER_PAGE = 10;
 
 export function RefundsListPage() {
   const [currentPage, setCurrentPage] = useState(1);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<RefundStatus | 'all'>('all');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<RefundStatus | "all">("all");
   const [refunds, setRefunds] = useState<Refund[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [totalPages, setTotalPages] = useState(1);
@@ -42,6 +48,40 @@ export function RefundsListPage() {
   }, [searchTerm]);
 
   // Load refunds from API
+  // Handle refund completion
+  const handleCompleteRefund = async (id: string) => {
+    if (!window.confirm("Xác nhận hoàn tiền cho yêu cầu này?")) {
+      return;
+    }
+
+    try {
+      await refundService.updateRefundCompleted(id);
+      toast.success("Đã xác nhận hoàn tiền thành công");
+      loadRefunds();
+    } catch (error: any) {
+      toast.error(
+        error.response?.data?.message || "Có lỗi xảy ra khi xác nhận hoàn tiền"
+      );
+    }
+  };
+
+  // Handle refund cancellation
+  const handleCancelRefund = async (id: string) => {
+    if (!window.confirm("Từ chối yêu cầu hoàn tiền này?")) {
+      return;
+    }
+
+    try {
+      await refundService.updateRefundCancelled(id);
+      toast.success("Đã từ chối yêu cầu hoàn tiền");
+      loadRefunds();
+    } catch (error: any) {
+      toast.error(
+        error.response?.data?.message || "Có lỗi xảy ra khi từ chối yêu cầu"
+      );
+    }
+  };
+
   const loadRefunds = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -50,23 +90,23 @@ export function RefundsListPage() {
         limit: ITEMS_PER_PAGE,
       };
 
-      if (statusFilter !== 'all') {
+      if (statusFilter !== "all") {
         params.status = statusFilter;
       }
       if (debouncedSearchTerm.trim()) {
         params.search = debouncedSearchTerm.trim();
       }
 
-      console.log('Loading refunds with params:', params); // Debug log
+      console.log("Loading refunds with params:", params); // Debug log
       const response = await refundService.getManyRefunds(params);
-      console.log('Response:', response); // Debug log
-      
+      console.log("Response:", response); // Debug log
+
       setRefunds(response.refunds);
       setTotalPages(response.totalPages);
       setTotalItems(response.totalItems);
     } catch (error: any) {
-      console.error('Error loading refunds:', error);
-      toast.error('Không thể tải danh sách hoàn tiền');
+      console.error("Error loading refunds:", error);
+      toast.error("Không thể tải danh sách hoàn tiền");
       setRefunds([]);
       setTotalPages(1);
       setTotalItems(0);
@@ -80,27 +120,33 @@ export function RefundsListPage() {
   }, [loadRefunds]);
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('vi-VN', {
-      style: 'currency',
-      currency: 'VND',
+    return new Intl.NumberFormat("vi-VN", {
+      style: "currency",
+      currency: "VND",
     }).format(value);
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('vi-VN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
+    return new Date(dateString).toLocaleDateString("vi-VN", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
   const getStatusBadge = (status: RefundStatus) => {
     const statusConfig = {
-      COMPLETED: { label: 'Đã Hoàn Tiền', className: 'bg-green-100 text-green-800' },
-      PENDING: { label: 'Đang Xử Lý', className: 'bg-yellow-100 text-yellow-800' },
-      CANCELLED: { label: 'Đã Hủy', className: 'bg-red-100 text-red-800' },
+      COMPLETED: {
+        label: "Đã Hoàn Tiền",
+        className: "bg-green-100 text-green-800",
+      },
+      PENDING: {
+        label: "Đang Xử Lý",
+        className: "bg-yellow-100 text-yellow-800",
+      },
+      CANCELLED: { label: "Đã Hủy", className: "bg-red-100 text-red-800" },
     };
     const config = statusConfig[status];
     return <Badge className={config.className}>{config.label}</Badge>;
@@ -108,24 +154,24 @@ export function RefundsListPage() {
 
   const getStatusLabel = (status: RefundStatus): string => {
     const statusLabels = {
-      COMPLETED: 'Đã Hoàn Tiền',
-      PENDING: 'Đang Xử Lý',
-      CANCELLED: 'Đã Hủy',
+      COMPLETED: "Đã Hoàn Tiền",
+      PENDING: "Đang Xử Lý",
+      CANCELLED: "Đã Hủy",
     };
     return statusLabels[status];
   };
 
   const handleExport = async () => {
     try {
-      toast.loading('Đang xuất dữ liệu...');
-      
+      toast.loading("Đang xuất dữ liệu...");
+
       // Fetch all refunds (without pagination)
       const params: any = {
         page: 1,
         limit: 1000, // Get large number to export all
       };
 
-      if (statusFilter !== 'all') {
+      if (statusFilter !== "all") {
         params.status = statusFilter;
       }
       if (debouncedSearchTerm.trim()) {
@@ -133,37 +179,38 @@ export function RefundsListPage() {
       }
 
       const response = await refundService.getManyRefunds(params);
-      
+
       // Prepare data for Excel
       const excelData = response.refunds.map((refund, index) => {
-        const totalDeductions = refund.penaltyAmount + refund.damageAmount + refund.overtimeAmount;
+        const totalDeductions =
+          refund.penaltyAmount + refund.damageAmount + refund.overtimeAmount;
         const finalAmount = refund.amount - totalDeductions;
-        
+
         return {
-          'STT': index + 1,
-          'ID Hoàn Tiền': refund.id,
-          'User ID': refund.userId,
-          'Booking ID': refund.bookingId,
-          'Số Tiền Gốc (VNĐ)': refund.principal,
-          'Số Tiền Hoàn (VNĐ)': refund.amount,
-          'Phí Phạt (VNĐ)': refund.penaltyAmount,
-          'Phí Thiệt Hại (VNĐ)': refund.damageAmount,
-          'Phí Quá Hạn (VNĐ)': refund.overtimeAmount,
-          'Tổng Phí Trừ (VNĐ)': totalDeductions,
-          'Thực Nhận (VNĐ)': finalAmount,
-          'Tỷ Lệ Hoàn (%)': ((finalAmount / refund.amount) * 100).toFixed(2),
-          'Trạng Thái': getStatusLabel(refund.status),
-          'Ngày Tạo': new Date(refund.createdAt).toLocaleString('vi-VN'),
-          'Cập Nhật': new Date(refund.updatedAt).toLocaleString('vi-VN'),
+          STT: index + 1,
+          "ID Hoàn Tiền": refund.id,
+          "User ID": refund.userId,
+          "Booking ID": refund.bookingId,
+          "Số Tiền Gốc (VNĐ)": refund.principal,
+          "Số Tiền Hoàn (VNĐ)": refund.amount,
+          "Phí Phạt (VNĐ)": refund.penaltyAmount,
+          "Phí Thiệt Hại (VNĐ)": refund.damageAmount,
+          "Phí Quá Hạn (VNĐ)": refund.overtimeAmount,
+          "Tổng Phí Trừ (VNĐ)": totalDeductions,
+          "Thực Nhận (VNĐ)": finalAmount,
+          "Tỷ Lệ Hoàn (%)": ((finalAmount / refund.amount) * 100).toFixed(2),
+          "Trạng Thái": getStatusLabel(refund.status),
+          "Ngày Tạo": new Date(refund.createdAt).toLocaleString("vi-VN"),
+          "Cập Nhật": new Date(refund.updatedAt).toLocaleString("vi-VN"),
         };
       });
 
       // Create worksheet
       const ws = XLSX.utils.json_to_sheet(excelData);
-      
+
       // Set column widths
-      ws['!cols'] = [
-        { wch: 5 },  // STT
+      ws["!cols"] = [
+        { wch: 5 }, // STT
         { wch: 38 }, // ID Hoàn Tiền
         { wch: 38 }, // User ID
         { wch: 38 }, // Booking ID
@@ -182,29 +229,31 @@ export function RefundsListPage() {
 
       // Create workbook
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Hoàn Tiền');
+      XLSX.utils.book_append_sheet(wb, ws, "Hoàn Tiền");
 
       // Generate filename with timestamp
-      const timestamp = new Date().toISOString().split('T')[0];
+      const timestamp = new Date().toISOString().split("T")[0];
       const filename = `DanhSachHoanTien_${timestamp}.xlsx`;
 
       // Export file
       XLSX.writeFile(wb, filename);
 
       toast.dismiss();
-      toast.success(`Đã xuất ${response.refunds.length} yêu cầu hoàn tiền thành công!`);
+      toast.success(
+        `Đã xuất ${response.refunds.length} yêu cầu hoàn tiền thành công!`
+      );
     } catch (error) {
-      console.error('Error exporting refunds:', error);
+      console.error("Error exporting refunds:", error);
       toast.dismiss();
-      toast.error('Không thể xuất file Excel');
+      toast.error("Không thể xuất file Excel");
     }
   };
 
   // Calculate stats from current loaded refunds
   const stats = {
-    completed: refunds.filter((r) => r.status === 'COMPLETED').length,
-    pending: refunds.filter((r) => r.status === 'PENDING').length,
-    cancelled: refunds.filter((r) => r.status === 'CANCELLED').length,
+    completed: refunds.filter((r) => r.status === "COMPLETED").length,
+    pending: refunds.filter((r) => r.status === "PENDING").length,
+    cancelled: refunds.filter((r) => r.status === "CANCELLED").length,
   };
 
   if (isLoading) {
@@ -221,7 +270,10 @@ export function RefundsListPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl">Quản Lý Hoàn Tiền</h2>
-        <Button onClick={handleExport} className="bg-green-600 hover:bg-green-700">
+        <Button
+          onClick={handleExport}
+          className="bg-green-600 hover:bg-green-700"
+        >
           <Download className="h-4 w-4 mr-2" />
           Xuất Excel
         </Button>
@@ -242,7 +294,7 @@ export function RefundsListPage() {
 
           <Select
             value={statusFilter}
-            onValueChange={(value: RefundStatus | 'all') => {
+            onValueChange={(value: RefundStatus | "all") => {
               setStatusFilter(value);
               setCurrentPage(1);
             }}
@@ -270,21 +322,15 @@ export function RefundsListPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-green-50 p-4 rounded-lg border border-green-200">
           <p className="text-sm text-green-700 mb-1">Đã Hoàn Tiền</p>
-          <p className="text-2xl font-bold text-green-800">
-            {stats.completed}
-          </p>
+          <p className="text-2xl font-bold text-green-800">{stats.completed}</p>
         </div>
         <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
           <p className="text-sm text-yellow-700 mb-1">Đang Xử Lý</p>
-          <p className="text-2xl font-bold text-yellow-800">
-            {stats.pending}
-          </p>
+          <p className="text-2xl font-bold text-yellow-800">{stats.pending}</p>
         </div>
         <div className="bg-red-50 p-4 rounded-lg border border-red-200">
           <p className="text-sm text-red-700 mb-1">Đã Hủy</p>
-          <p className="text-2xl font-bold text-red-800">
-            {stats.cancelled}
-          </p>
+          <p className="text-2xl font-bold text-red-800">{stats.cancelled}</p>
         </div>
       </div>
 
@@ -306,21 +352,35 @@ export function RefundsListPage() {
           <TableBody>
             {refunds.length > 0 ? (
               refunds.map((refund: Refund) => {
-                const totalDeductions = refund.penaltyAmount + refund.damageAmount + refund.overtimeAmount;
+                const totalDeductions =
+                  refund.penaltyAmount +
+                  refund.damageAmount +
+                  refund.overtimeAmount;
                 const finalAmount = refund.amount - totalDeductions;
                 return (
                   <TableRow key={refund.id}>
                     <TableCell>
                       <code className="text-sm bg-gray-100 px-2 py-1 rounded">
-                        {refund.bookingId.substring(0, 8)}...
+                        {refund.bookingId
+                          ? refund.bookingId.substring(0, 8) + "..."
+                          : "N/A"}
                       </code>
                     </TableCell>
                     <TableCell>
-                      <span className="text-xs text-gray-500">ID: {refund.userId.substring(0, 8)}...</span>
+                      <span className="text-xs text-gray-500">
+                        ID:{" "}
+                        {refund.userId
+                          ? refund.userId.substring(0, 8) + "..."
+                          : "N/A"}
+                      </span>
                     </TableCell>
-                    <TableCell className="font-medium">{formatCurrency(refund.amount)}</TableCell>
+                    <TableCell className="font-medium">
+                      {formatCurrency(refund.amount)}
+                    </TableCell>
                     <TableCell className="text-red-600">
-                      {totalDeductions > 0 ? `-${formatCurrency(totalDeductions)}` : '-'}
+                      {totalDeductions > 0
+                        ? `-${formatCurrency(totalDeductions)}`
+                        : "-"}
                     </TableCell>
                     <TableCell className="font-bold text-green-600">
                       {formatCurrency(finalAmount)}
@@ -330,18 +390,49 @@ export function RefundsListPage() {
                       {formatDate(refund.createdAt)}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Link to={`/refunds/${refund.id}`}>
-                        <Button variant="ghost" size="sm">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </Link>
+                      <div className="flex items-center justify-end gap-1">
+                        {refund.status === "PENDING" && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleCompleteRefund(refund.id)}
+                              className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                              title="Xác nhận hoàn tiền"
+                            >
+                              <Check className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleCancelRefund(refund.id)}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              title="Từ chối yêu cầu"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
+                        <Link to={`/refunds/${refund.id}`}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="Xem chi tiết"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </Link>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
               })
             ) : (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-gray-500 py-8">
+                <TableCell
+                  colSpan={8}
+                  className="text-center text-gray-500 py-8"
+                >
                   Không tìm thấy yêu cầu hoàn tiền nào
                 </TableCell>
               </TableRow>
@@ -352,7 +443,11 @@ export function RefundsListPage() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+        />
       )}
     </div>
   );

@@ -1,15 +1,17 @@
 // Booking types based on API response
 export type BookingStatus =
-  | 'PENDING'
-  | 'DEPOSIT_PAID'
-  | 'FULLY_PAID'
-  | 'ONGOING'
-  | 'COMPLETED'
-  | 'CANCELLED'
-  | 'EXPIRED'
-  | 'OVERDUE';
+  | "PENDING"
+  | "PENDING_VERIFY"
+  | "DEPOSIT_PAID"
+  | "READY_FOR_CHECKIN"
+  | "FULLY_PAID"
+  | "ONGOING"
+  | "COMPLETED"
+  | "CANCELLED"
+  | "EXPIRED"
+  | "OVERDUE";
 
-export type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
+export type PaymentStatus = "PENDING" | "PAID" | "FAILED" | "REFUNDED";
 
 export interface Booking {
   id: string;
@@ -60,7 +62,7 @@ export interface GetBookingsResponse {
   totalPages: number;
 }
 
-export type CheckInOutType = 'CHECK_IN' | 'CHECK_OUT';
+export type CheckInOutType = "CHECK_IN" | "CHECK_OUT";
 
 export interface CheckInOut {
   id: string;
@@ -90,7 +92,7 @@ export interface GetCheckInOutsResponse {
   totalPages: number;
 }
 
-export type ExtensionStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type ExtensionStatus = "PENDING" | "APPROVED" | "REJECTED";
 
 export interface Extension {
   id: string;

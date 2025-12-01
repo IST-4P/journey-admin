@@ -103,12 +103,20 @@ export function RentalDetailPage() {
   };
 
   const getStatusBadge = (status: BookingStatus) => {
-    const statusConfig = {
+    const statusConfig: Record<string, { label: string; className: string }> = {
       PENDING: {
         label: "Chờ Thanh Toán",
         className: "bg-yellow-100 text-yellow-800",
       },
+      PENDING_VERIFY: {
+        label: "Chờ Xác Minh",
+        className: "bg-orange-100 text-orange-800",
+      },
       DEPOSIT_PAID: { label: "Đã Cọc", className: "bg-blue-100 text-blue-800" },
+      READY_FOR_CHECKIN: {
+        label: "Sẵn Sàng Nhận Xe",
+        className: "bg-cyan-100 text-cyan-800",
+      },
       FULLY_PAID: {
         label: "Đã Thanh Toán",
         className: "bg-green-100 text-green-800",
@@ -125,7 +133,10 @@ export function RentalDetailPage() {
       EXPIRED: { label: "Hết Hạn", className: "bg-orange-100 text-orange-800" },
       OVERDUE: { label: "Quá Hạn", className: "bg-red-100 text-red-800" },
     };
-    const config = statusConfig[status];
+    const config = statusConfig[status] || {
+      label: status,
+      className: "bg-gray-100 text-gray-800",
+    };
     return <Badge className={config.className}>{config.label}</Badge>;
   };
 
@@ -284,8 +295,12 @@ export function RentalDetailPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="PENDING">Chờ Thanh Toán</SelectItem>
+                    <SelectItem value="PENDING_VERIFY">Chờ Xác Minh</SelectItem>
                     <SelectItem value="DEPOSIT_PAID">
                       Đã Thanh Toán Giữ Chỗ
+                    </SelectItem>
+                    <SelectItem value="READY_FOR_CHECKIN">
+                      Sẵn Sàng Nhận Xe
                     </SelectItem>
                     <SelectItem value="FULLY_PAID">Đã Thanh Toán Đủ</SelectItem>
                     <SelectItem value="ONGOING">Đang Thuê</SelectItem>
