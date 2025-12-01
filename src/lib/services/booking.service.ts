@@ -1,15 +1,21 @@
-import axios from '../axios';
-import type { GetBookingsParams, GetBookingsResponse, Booking } from '../types/booking.types';
+import axios from "../axios";
+import type {
+  Booking,
+  GetBookingsParams,
+  GetBookingsResponse,
+} from "../types/booking.types";
 
-const BASE_URL = '/booking';
+const BASE_URL = "/booking";
 
 /**
  * Get multiple bookings with pagination and filters
  */
-export async function getManyBookings(params: GetBookingsParams): Promise<GetBookingsResponse> {
+export async function getManyBookings(
+  params: GetBookingsParams
+): Promise<GetBookingsResponse> {
   // axios interceptor đã unwrap response.data.data thành response
   const response = await axios.get(BASE_URL, { params });
-  console.log('Bookings response:', response);
+  console.log("Bookings response:", response);
   return response as any;
 }
 
@@ -19,22 +25,29 @@ export async function getManyBookings(params: GetBookingsParams): Promise<GetBoo
 export async function getBookingById(id: string): Promise<Booking> {
   // axios interceptor đã unwrap response.data.data thành response
   const response = await axios.get(`${BASE_URL}/${id}`);
-  console.log('Booking detail response:', response);
+  console.log("Booking detail response:", response);
   return response as any;
 }
 
 /**
  * Update booking status
  */
-export async function updateBookingStatus(id: string, status: string): Promise<Booking> {
-  const response = await axios.patch(`${BASE_URL}/${id}/status`, { status });
-  return response.data.data;
+export async function updateBookingStatus(
+  id: string,
+  status: string
+): Promise<Booking> {
+  const response: any = await axios.put(`${BASE_URL}/status`, { id, status });
+  console.log("Update status response:", response);
+  return response;
 }
 
 /**
  * Cancel booking
  */
-export async function cancelBooking(id: string, reason?: string): Promise<Booking> {
+export async function cancelBooking(
+  id: string,
+  reason?: string
+): Promise<Booking> {
   const response = await axios.post(`${BASE_URL}/${id}/cancel`, { reason });
   return response.data.data;
 }
@@ -44,7 +57,7 @@ export async function cancelBooking(id: string, reason?: string): Promise<Bookin
  */
 export async function getBookingStats() {
   const response: any = await axios.get(`${BASE_URL}/information`);
-  console.log('Booking stats response:', response);
+  console.log("Booking stats response:", response);
   return response;
 }
 
@@ -53,9 +66,9 @@ export async function getBookingStats() {
  */
 export async function getCheckInOutsByBookingId(bookingId: string) {
   const response: any = await axios.get(`/check`, {
-    params: { bookingId }
+    params: { bookingId },
   });
-  console.log('Check-in/out response:', response);
+  console.log("Check-in/out response:", response);
   // Response structure: { checkInOuts: [], page, limit, totalItems, totalPages }
   return response?.checkInOuts || [];
 }
@@ -73,9 +86,9 @@ export async function verifyCheckInOut(checkInOutId: string) {
  */
 export async function getBookingHistory(bookingId: string) {
   const response: any = await axios.get(`/history`, {
-    params: { bookingId }
+    params: { bookingId },
   });
-  console.log('Booking history response:', response);
+  console.log("Booking history response:", response);
   return response?.histories || [];
 }
 
@@ -84,9 +97,9 @@ export async function getBookingHistory(bookingId: string) {
  */
 export async function getExtensionsByBookingId(bookingId: string) {
   const response: any = await axios.get(`/extension`, {
-    params: { bookingId }
+    params: { bookingId },
   });
-  console.log('Extensions response:', response);
+  console.log("Extensions response:", response);
   return response?.extensions || [];
 }
 
@@ -94,7 +107,9 @@ export async function getExtensionsByBookingId(bookingId: string) {
  * Approve an extension
  */
 export async function approveExtension(extensionId: string) {
-  const response: any = await axios.put(`/extension/approve`, { id: extensionId });
+  const response: any = await axios.put(`/extension/approve`, {
+    id: extensionId,
+  });
   return response;
 }
 
@@ -102,9 +117,9 @@ export async function approveExtension(extensionId: string) {
  * Reject an extension
  */
 export async function rejectExtension(extensionId: string, reason: string) {
-  const response: any = await axios.put(`/extension/reject`, { 
-    id: extensionId, 
-    rejectionReason: reason 
+  const response: any = await axios.put(`/extension/reject`, {
+    id: extensionId,
+    rejectionReason: reason,
   });
   return response;
 }
