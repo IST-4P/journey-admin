@@ -5,6 +5,7 @@ import type {
   GetBookingsResponse,
   GetExtensionListParams,
   GetExtensionListResponse,
+  CheckInOutPair,
 } from "../types/booking.types";
 
 const BASE_URL = "/booking";
@@ -64,15 +65,35 @@ export async function getBookingStats() {
 }
 
 /**
- * Get check-in/out records for a booking
+ * Get check-in/out records for a booking (returns latest check-in & check-out)
  */
-export async function getCheckInOutsByBookingId(bookingId: string) {
+export async function getCheckInOutsByBookingId(
+  bookingId: string,
+  params?: { type?: "CHECK_IN" | "CHECK_OUT"; page?: number; limit?: number }
+): Promise<CheckInOutPair> {
   const response: any = await axios.get(`/check`, {
-    params: { bookingId },
+    params: { bookingId, ...params },
   });
   console.log("Check-in/out response:", response);
-  // Response structure: { checkInOuts: [], page, limit, totalItems, totalPages }
-  return response?.checkInOuts || [];
+
+  // New API structure: { checkIn, checkOut }
+  if (response?.checkIn || response?.checkOut) {
+    return {
+      checkIn: response.checkIn || null,
+      checkOut: response.checkOut || null,
+    };
+  }
+
+  // Fallback to older structure if any
+  const list = response?.checkInOuts || response?.data?.checkInOuts;
+  if (Array.isArray(list)) {
+    return {
+      checkIn: list.find((item: any) => item.type === "CHECK_IN") || null,
+      checkOut: list.find((item: any) => item.type === "CHECK_OUT") || null,
+    };
+  }
+
+  return { checkIn: null, checkOut: null };
 }
 
 /**

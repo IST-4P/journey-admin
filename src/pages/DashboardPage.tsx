@@ -137,7 +137,7 @@ export function DashboardPage() {
       iconColor: 'text-indigo-600',
     },
     {
-      title: 'Thuê Hoạt Động',
+      title: 'Đơn thuê thiết bị',
       value: stats.rentalActive,
       icon: Calendar,
       color: 'from-pink-500 to-pink-600',
@@ -171,8 +171,8 @@ export function DashboardPage() {
   // Dữ liệu cho Bar Chart - Hoạt động hệ thống
   const activityData = [
     { name: 'Người Dùng', value: stats.userCount, color: '#3b82f6' },
-    { name: 'Đơn Đang Chạy', value: stats.bookingOngoing, color: '#22c55e' },
-    { name: 'Thuê Hoạt Động', value: stats.rentalActive, color: '#ec4899' },
+    { name: 'Đơn thuê xe ', value: stats.bookingOngoing, color: '#22c55e' },
+    { name: 'Đơn thuê thiết bị', value: stats.rentalActive, color: '#ec4899' },
     { name: 'Bài Viết', value: stats.blogCount, color: '#14b8a6' },
   ];
 

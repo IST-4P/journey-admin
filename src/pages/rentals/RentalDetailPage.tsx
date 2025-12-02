@@ -41,13 +41,14 @@ import type {
   BookingHistory,
   BookingStatus,
   CheckInOut,
+  CheckInOutPair,
   Extension,
 } from "../../lib/types/booking.types";
 
 export function RentalDetailPage() {
   const { id } = useParams();
   const [booking, setBooking] = useState<Booking | null>(null);
-  const [checkInOuts, setCheckInOuts] = useState<CheckInOut[]>([]);
+  const [checkInOuts, setCheckInOuts] = useState<CheckInOutPair>({});
   const [extensions, setExtensions] = useState<Extension[]>([]);
   const [history, setHistory] = useState<BookingHistory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -68,13 +69,15 @@ export function RentalDetailPage() {
       const [bookingData, checkInOutData, extensionData, historyData] =
         await Promise.all([
           bookingService.getBookingById(id!),
-          bookingService.getCheckInOutsByBookingId(id!).catch(() => []),
+          bookingService
+            .getCheckInOutsByBookingId(id!)
+            .catch(() => ({ checkIn: null, checkOut: null })),
           bookingService.getExtensionsByBookingId(id!).catch(() => []),
           bookingService.getBookingHistory(id!).catch(() => []),
         ]);
 
       setBooking(bookingData);
-      setCheckInOuts(Array.isArray(checkInOutData) ? checkInOutData : []);
+      setCheckInOuts(checkInOutData || {});
       setExtensions(Array.isArray(extensionData) ? extensionData : []);
       setHistory(Array.isArray(historyData) ? historyData : []);
     } catch (error: any) {
@@ -258,6 +261,15 @@ export function RentalDetailPage() {
     );
   }
 
+  const checkInOutList: CheckInOut[] = (
+    [checkInOuts.checkIn, checkInOuts.checkOut].filter(Boolean) as CheckInOut[]
+  );
+  const normalizedCheckInOutList = checkInOutList.map((item) => ({
+    ...item,
+    images: item.images || [],
+    damageImages: item.damageImages || [],
+  }));
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -356,7 +368,7 @@ export function RentalDetailPage() {
                     Lịch Sử ({history.length})
                   </TabsTrigger>
                   <TabsTrigger value="checkins">
-                    Check-in/out ({checkInOuts.length})
+                    Check-in/out ({normalizedCheckInOutList.length})
                   </TabsTrigger>
                   <TabsTrigger value="extensions">
                     Gia Hạn ({extensions.length})
@@ -510,8 +522,8 @@ export function RentalDetailPage() {
 
                 {/* Check-ins Tab */}
                 <TabsContent value="checkins" className="space-y-4 mt-4">
-                  {checkInOuts.length > 0 ? (
-                    checkInOuts.map((checkIn) => (
+                  {normalizedCheckInOutList.length > 0 ? (
+                    normalizedCheckInOutList.map((checkIn) => (
                       <div key={checkIn.id} className="border rounded-lg p-4">
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-2">

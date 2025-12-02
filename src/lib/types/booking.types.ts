@@ -84,6 +84,11 @@ export interface CheckInOut {
   updatedAt: string;
 }
 
+export interface CheckInOutPair {
+  checkIn?: CheckInOut | null;
+  checkOut?: CheckInOut | null;
+}
+
 export interface GetCheckInOutsResponse {
   checkInOuts: CheckInOut[];
   page: number;
