@@ -1,4 +1,4 @@
-import { AlertCircle, Bell, BookOpen, Car, ChevronDown, ChevronRight, CreditCard, FileText, LayoutDashboard, MessageSquare, Package, Star, Users, Wrench } from 'lucide-react';
+import { AlertCircle, Bell, BookOpen, Car, ChevronDown, ChevronRight, Clock3, CreditCard, FileText, LayoutDashboard, MessageSquare, Package, Star, Users, Wrench } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
@@ -26,6 +26,7 @@ export function Sidebar({ isOpen }: SidebarProps) {
       children: [
         { path: '/vehicles', label: 'Phương Tiện', icon: Car },
         { path: '/vehicle-rentals', label: 'Đơn Thuê', icon: FileText },
+        { path: '/vehicle-rental-extensions', label: 'Gia Hạn', icon: Clock3 },
       ],
     },
     {

@@ -3,6 +3,8 @@ import type {
   Booking,
   GetBookingsParams,
   GetBookingsResponse,
+  GetExtensionListParams,
+  GetExtensionListResponse,
 } from "../types/booking.types";
 
 const BASE_URL = "/booking";
@@ -101,6 +103,17 @@ export async function getExtensionsByBookingId(bookingId: string) {
   });
   console.log("Extensions response:", response);
   return response?.extensions || [];
+}
+
+/**
+ * Get paginated extensions across bookings
+ */
+export async function getExtensions(
+  params: GetExtensionListParams
+): Promise<GetExtensionListResponse> {
+  const response: any = await axios.get(`/extension`, { params });
+  console.log("Extensions list response:", response);
+  return response as any;
 }
 
 /**

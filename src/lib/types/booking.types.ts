@@ -111,6 +111,21 @@ export interface Extension {
   updatedAt: string;
 }
 
+export interface GetExtensionListParams {
+  page?: number;
+  limit?: number;
+  status?: ExtensionStatus;
+  bookingId?: string;
+}
+
+export interface GetExtensionListResponse {
+  extensions: Extension[];
+  page: number;
+  limit: number;
+  totalItems: number;
+  totalPages: number;
+}
+
 export interface BookingHistory {
   id: string;
   bookingId: string;

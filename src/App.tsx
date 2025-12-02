@@ -26,6 +26,7 @@ import { PostDetailPage } from "./pages/posts/PostDetailPage";
 import { PostFormPage } from "./pages/posts/PostFormPage";
 import { PostsListPage } from "./pages/posts/PostsListPage";
 import { RentalDetailPage } from "./pages/rentals/RentalDetailPage";
+import { RentalExtensionsListPage } from "./pages/rentals/RentalExtensionsListPage";
 import { RentalsListPage } from "./pages/rentals/RentalsListPage";
 import { ReviewDetailPage } from "./pages/reviews/ReviewDetailPage";
 import { ReviewsListPage } from "./pages/reviews/ReviewsListPage";
@@ -114,6 +115,10 @@ export default function App() {
                 />
 
                 <Route path="/vehicle-rentals" element={<RentalsListPage />} />
+                <Route
+                  path="/vehicle-rental-extensions"
+                  element={<RentalExtensionsListPage />}
+                />
                 <Route
                   path="/vehicle-rentals/new"
                   element={<RentalDetailPage />}
