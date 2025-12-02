@@ -23,6 +23,7 @@ import {
   TableRow,
 } from "../../components/ui/table";
 import * as bookingService from "../../lib/services/booking.service";
+import { userService } from "../../lib/services/user.service";
 import type {
   Booking,
   BookingStatistics,
@@ -46,6 +47,7 @@ export function RentalsListPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
+  const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [stats, setStats] = useState<BookingStatistics>({
     totalBookings: 0,
     pendingBookings: 0,
@@ -101,6 +103,30 @@ export function RentalsListPage() {
       setBookings(filteredBookings);
       setTotalPages(response.totalPages);
       setTotalItems(response.totalItems);
+
+      // Fetch user names for bookings
+      const userIdsToFetch = filteredBookings
+        .map((b: Booking) => b.userId)
+        .filter((id, index, self) => self.indexOf(id) === index); // unique IDs
+
+      if (userIdsToFetch.length > 0) {
+        const userNamePromises = userIdsToFetch.map(async (userId) => {
+          try {
+            const profile = await userService.getProfile(userId);
+            return { userId, name: profile.fullName || profile.email || 'N/A' };
+          } catch (error) {
+            console.error(`Error fetching user ${userId}:`, error);
+            return { userId, name: 'N/A' };
+          }
+        });
+
+        const userNameResults = await Promise.all(userNamePromises);
+        const userNameMap: Record<string, string> = {};
+        userNameResults.forEach(({ userId, name }) => {
+          userNameMap[userId] = name;
+        });
+        setUserNames(userNameMap);
+      }
     } catch (error: any) {
       console.error("Error loading bookings:", error);
       console.error("Error details:", error.response?.data);
@@ -380,6 +406,7 @@ export function RentalsListPage() {
                   </TableCell>
                   <TableCell>
                     <div>
+                      <p className="font-medium">{userNames[booking.userId] || 'N/A'}</p>
                       <p className="text-xs text-gray-500">
                         ID: {booking.userId.substring(0, 8)}...
                       </p>

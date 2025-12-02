@@ -23,6 +23,7 @@ import {
   TableRow,
 } from '../../components/ui/table';
 import { getManyRentals } from '../../lib/services/equipment.service';
+import { userService } from '../../lib/services/user.service';
 import { Rental, RentalStatus } from '../../lib/types/rental.types';
 
 export function EquipmentRentalsListPage() {
@@ -35,6 +36,7 @@ export function EquipmentRentalsListPage() {
   const [startDateTo, setStartDateTo] = useState('');
   const [rentals, setRentals] = useState<Rental[]>([]);
   const [loading, setLoading] = useState(false);
+  const [userNames, setUserNames] = useState<Record<string, string>>({});
 
   // Load rentals from API
   const loadRentals = async () => {
@@ -56,6 +58,31 @@ export function EquipmentRentalsListPage() {
       console.log('Total pages:', data?.totalPages);
       setRentals(rentalsList);
       setTotalPages(data?.totalPages || 1);
+
+      // Fetch user names for rentals that don't have userName
+      const userIdsToFetch = rentalsList
+        .filter((r: Rental) => !r.userName && r.userId)
+        .map((r: Rental) => r.userId);
+
+      if (userIdsToFetch.length > 0) {
+        const uniqueUserIds = [...new Set(userIdsToFetch)];
+        const userNamePromises = uniqueUserIds.map(async (userId) => {
+          try {
+            const profile = await userService.getProfile(userId);
+            return { userId, name: profile.fullName || profile.email || 'N/A' };
+          } catch (error) {
+            console.error(`Error fetching user ${userId}:`, error);
+            return { userId, name: 'N/A' };
+          }
+        });
+
+        const userNameResults = await Promise.all(userNamePromises);
+        const userNameMap: Record<string, string> = {};
+        userNameResults.forEach(({ userId, name }) => {
+          userNameMap[userId] = name;
+        });
+        setUserNames(userNameMap);
+      }
     } catch (error: any) {
       console.error('Error loading rentals:', error);
       if (error?.response?.status === 404 || error?.statusCode === 404) {
@@ -291,7 +318,7 @@ export function EquipmentRentalsListPage() {
                   </TableCell>
                   <TableCell>
                     <div>
-                      <p className="font-medium">{rental.userName || 'Unknown'}</p>
+                      <p className="font-medium">{rental.userName || userNames[rental.userId] || 'N/A'}</p>
                       <p className="text-xs text-gray-500">{rental.userId.substring(0, 8)}...</p>
                     </div>
                   </TableCell>
