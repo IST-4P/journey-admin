@@ -1,6 +1,7 @@
-import { Eye, Filter, Package, Search, Wrench, X } from 'lucide-react';
-import { useState } from 'react';
+import { Eye, Filter, Search, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 import { Pagination } from '../../components/common/Pagination';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -21,40 +22,73 @@ import {
   TableHeader,
   TableRow,
 } from '../../components/ui/table';
-import { EquipmentBookingStatus, mockEquipmentBookings } from '../../lib/mockData';
-
-const ITEMS_PER_PAGE = 15;
+import { getManyRentals } from '../../lib/services/equipment.service';
+import { Rental, RentalStatus } from '../../lib/types/rental.types';
 
 export function EquipmentRentalsListPage() {
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<EquipmentBookingStatus | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<RentalStatus | 'all'>('all');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [startDateFrom, setStartDateFrom] = useState('');
   const [startDateTo, setStartDateTo] = useState('');
+  const [rentals, setRentals] = useState<Rental[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  // Filter bookings
-  const filteredBookings = mockEquipmentBookings.filter((booking) => {
-    const matchesSearch =
-      booking.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      booking.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      booking.items.some(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesStatus = statusFilter === 'all' || booking.status === statusFilter;
+  // Load rentals from API
+  const loadRentals = async () => {
+    setLoading(true);
+    try {
+      const data = await getManyRentals({
+        page: currentPage,
+        limit: 10,
+        status: statusFilter === 'all' ? undefined : statusFilter,
+        sortBy: 'createdAt',
+        order: 'DESC',
+      });
 
-    const bookingStartDate = new Date(booking.startTime);
-    const matchesStartDateFrom = !startDateFrom || bookingStartDate >= new Date(startDateFrom);
-    const matchesStartDateTo = !startDateTo || bookingStartDate <= new Date(startDateTo);
+      console.log('Rentals API data:', data);
+      // Axios interceptor return data từ response.data, nên:
+      // data = { rentals: [...], page: 1, limit: 15, totalItems: 42, totalPages: 3 }
+      const rentalsList = data?.rentals || [];
+      console.log('Rentals list:', rentalsList);
+      console.log('Total pages:', data?.totalPages);
+      setRentals(rentalsList);
+      setTotalPages(data?.totalPages || 1);
+    } catch (error: any) {
+      console.error('Error loading rentals:', error);
+      if (error?.response?.status === 404 || error?.statusCode === 404) {
+        setRentals([]);
+        setTotalPages(1);
+      } else {
+        toast.error('Không thể tải danh sách đơn thuê');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    return (
-      matchesSearch &&
-      matchesStatus &&
-      matchesStartDateFrom &&
-      matchesStartDateTo
-    );
+  useEffect(() => {
+    loadRentals();
+  }, [currentPage, statusFilter]);
+
+  // Filter rentals locally for search and date filters
+  const filteredRentals = rentals.filter((rental) => {
+    const matchesSearch = !searchQuery || 
+      (rental.userName && rental.userName.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      rental.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (rental.userEmail && rental.userEmail.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    const rentalStartDate = new Date(rental.startDate);
+    const matchesStartDateFrom = !startDateFrom || rentalStartDate >= new Date(startDateFrom);
+    const matchesStartDateTo = !startDateTo || rentalStartDate <= new Date(startDateTo);
+
+    return matchesSearch && matchesStartDateFrom && matchesStartDateTo;
   });
 
   // Check if any advanced filters are active
-  const hasActiveFilters = startDateFrom !== '' || startDateTo !== '';
+  const hasActiveFilters = startDateFrom !== '' || startDateTo !== '' || searchQuery !== '';
 
   // Reset all filters
   const resetFilters = () => {
@@ -65,13 +99,9 @@ export function EquipmentRentalsListPage() {
     setCurrentPage(1);
   };
 
-  // Pagination
-  const totalPages = Math.ceil(filteredBookings.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedBookings = filteredBookings.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-
   // Format currency
-  const formatCurrency = (value: number) => {
+  const formatCurrency = (value?: number) => {
+    if (!value) return 'N/A';
     return new Intl.NumberFormat('vi-VN', {
       style: 'currency',
       currency: 'VND',
@@ -90,27 +120,25 @@ export function EquipmentRentalsListPage() {
   };
 
   // Get status badge
-  const getStatusBadge = (status: EquipmentBookingStatus) => {
+  const getStatusBadge = (status: RentalStatus) => {
     const statusConfig = {
-      PENDING: { label: 'Chờ Thanh Toán', className: 'bg-yellow-100 text-yellow-800' },
-      CONFIRMED: { label: 'Đã Xác Nhận', className: 'bg-blue-100 text-blue-800' },
-      READY_FOR_PICKUP: { label: 'Sẵn Sàng Nhận', className: 'bg-cyan-100 text-cyan-800' },
-      ONGOING: { label: 'Đang Thuê', className: 'bg-purple-100 text-purple-800' },
-      COMPLETED: { label: 'Hoàn Thành', className: 'bg-gray-100 text-gray-800' },
+      EXPIRED: { label: 'Đã Hết Hạn', className: 'bg-gray-100 text-gray-800' },
+      ACTIVE: { label: 'Đang Hoạt Động', className: 'bg-green-100 text-green-800' },
+      PENDING: { label: 'Chờ Xử Lý', className: 'bg-yellow-100 text-yellow-800' },
+      COMPLETED: { label: 'Hoàn Thành', className: 'bg-blue-100 text-blue-800' },
       CANCELLED: { label: 'Đã Hủy', className: 'bg-red-100 text-red-800' },
-      OVERDUE: { label: 'Quá Hạn', className: 'bg-red-100 text-red-800' },
     };
-    const config = statusConfig[status];
+    const config = statusConfig[status] || { label: status, className: 'bg-gray-100 text-gray-800' };
     return <Badge className={config.className}>{config.label}</Badge>;
   };
 
   // Statistics
   const stats = {
-    total: filteredBookings.length,
-    pending: filteredBookings.filter((r) => r.status === 'PENDING').length,
-    ongoing: filteredBookings.filter((r) => r.status === 'ONGOING').length,
-    completed: filteredBookings.filter((r) => r.status === 'COMPLETED').length,
-    cancelled: filteredBookings.filter((r) => r.status === 'CANCELLED').length,
+    total: rentals.length,
+    expired: rentals.filter((r) => r.status === 'EXPIRED').length,
+    active: rentals.filter((r) => r.status === 'ACTIVE').length,
+    pending: rentals.filter((r) => r.status === 'PENDING').length,
+    completed: rentals.filter((r) => r.status === 'COMPLETED').length,
   };
 
   return (
@@ -131,20 +159,20 @@ export function EquipmentRentalsListPage() {
           <p className="text-2xl font-bold text-gray-800">{stats.total}</p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-yellow-500">
-          <p className="text-sm text-gray-600">Chờ Thanh Toán</p>
+          <p className="text-sm text-gray-600">Chờ Xử Lý</p>
           <p className="text-2xl font-bold text-yellow-600">{stats.pending}</p>
         </div>
-        <div className="bg-white p-4 rounded-lg shadow border-l-4 border-purple-500">
-          <p className="text-sm text-gray-600">Đang Thuê</p>
-          <p className="text-2xl font-bold text-purple-600">{stats.ongoing}</p>
-        </div>
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-green-500">
-          <p className="text-sm text-gray-600">Hoàn Thành</p>
-          <p className="text-2xl font-bold text-green-600">{stats.completed}</p>
+          <p className="text-sm text-gray-600">Đang Hoạt Động</p>
+          <p className="text-2xl font-bold text-green-600">{stats.active}</p>
         </div>
-        <div className="bg-white p-4 rounded-lg shadow border-l-4 border-red-500">
-          <p className="text-sm text-gray-600">Đã Hủy</p>
-          <p className="text-2xl font-bold text-red-600">{stats.cancelled}</p>
+        <div className="bg-white p-4 rounded-lg shadow border-l-4 border-blue-500">
+          <p className="text-sm text-gray-600">Hoàn Thành</p>
+          <p className="text-2xl font-bold text-blue-600">{stats.completed}</p>
+        </div>
+        <div className="bg-white p-4 rounded-lg shadow border-l-4 border-gray-500">
+          <p className="text-sm text-gray-600">Đã Hết Hạn</p>
+          <p className="text-2xl font-bold text-gray-600">{stats.expired}</p>
         </div>
       </div>
 
@@ -166,7 +194,7 @@ export function EquipmentRentalsListPage() {
 
           <Select
             value={statusFilter}
-            onValueChange={(value: EquipmentBookingStatus | 'all') => {
+            onValueChange={(value: RentalStatus | 'all') => {
               setStatusFilter(value);
               setCurrentPage(1);
             }}
@@ -176,13 +204,11 @@ export function EquipmentRentalsListPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tất cả trạng thái</SelectItem>
-              <SelectItem value="PENDING">Chờ Thanh Toán</SelectItem>
-              <SelectItem value="CONFIRMED">Đã Xác Nhận</SelectItem>
-              <SelectItem value="READY_FOR_PICKUP">Sẵn Sàng Nhận</SelectItem>
-              <SelectItem value="ONGOING">Đang Thuê</SelectItem>
+              <SelectItem value="PENDING">Chờ Xử Lý</SelectItem>
+              <SelectItem value="ACTIVE">Đang Hoạt Động</SelectItem>
               <SelectItem value="COMPLETED">Hoàn Thành</SelectItem>
+              <SelectItem value="EXPIRED">Đã Hết Hạn</SelectItem>
               <SelectItem value="CANCELLED">Đã Hủy</SelectItem>
-              <SelectItem value="OVERDUE">Quá Hạn</SelectItem>
             </SelectContent>
           </Select>
 
@@ -240,59 +266,62 @@ export function EquipmentRentalsListPage() {
             <TableRow>
               <TableHead>Mã Đơn</TableHead>
               <TableHead>Người Thuê</TableHead>
-              <TableHead>Thiết Bị</TableHead>
+              <TableHead>Email</TableHead>
               <TableHead>Thời Gian</TableHead>
-              <TableHead>Thời Lượng</TableHead>
               <TableHead>Tổng Tiền</TableHead>
+              <TableHead>Giảm Giá</TableHead>
               <TableHead>Trạng Thái</TableHead>
               <TableHead className="text-right">Thao Tác</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paginatedBookings.length > 0 ? (
-              paginatedBookings.map((booking) => (
-                <TableRow key={booking.id}>
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={8} className="text-center text-gray-500 py-8">
+                  Đang tải dữ liệu...
+                </TableCell>
+              </TableRow>
+            ) : filteredRentals.length > 0 ? (
+              filteredRentals.map((rental) => (
+                <TableRow key={rental.id}>
                   <TableCell>
-                    <code className="text-xs bg-gray-100 px-2 py-1 rounded">{booking.id}</code>
+                    <code className="text-xs bg-gray-100 px-2 py-1 rounded">
+                      {rental.id.substring(0, 8)}...
+                    </code>
                   </TableCell>
                   <TableCell>
                     <div>
-                      <p className="font-medium">{booking.userName}</p>
-                      <p className="text-xs text-gray-500">{booking.userId}</p>
+                      <p className="font-medium">{rental.userName || 'Unknown'}</p>
+                      <p className="text-xs text-gray-500">{rental.userId.substring(0, 8)}...</p>
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="space-y-1">
-                      {booking.items.slice(0, 2).map((item, idx) => (
-                        <div key={idx} className="flex items-center gap-2">
-                          {item.type === 'combo' ? (
-                            <Package className="h-3 w-3 text-purple-600" />
-                          ) : (
-                            <Wrench className="h-3 w-3 text-blue-600" />
-                          )}
-                          <p className="text-sm">
-                            {item.name} <span className="text-gray-500">x{item.quantity}</span>
-                          </p>
-                        </div>
-                      ))}
-                      {booking.items.length > 2 && (
-                        <p className="text-xs text-gray-500">+{booking.items.length - 2} mục khác</p>
-                      )}
-                    </div>
+                    <p className="text-sm">{rental.userEmail || 'N/A'}</p>
                   </TableCell>
                   <TableCell className="text-sm">
                     <div>
-                      <p>{formatDateTime(booking.startTime)}</p>
-                      <p className="text-gray-500">{formatDateTime(booking.endTime)}</p>
+                      <p>{formatDateTime(rental.startDate)}</p>
+                      <p className="text-gray-500">{formatDateTime(rental.endDate)}</p>
                     </div>
                   </TableCell>
+                  <TableCell className="font-medium">{formatCurrency(rental.totalPrice)}</TableCell>
                   <TableCell className="text-sm">
-                    {booking.duration} ngày
+                    {rental.discountPercent ? (
+                      <span className="text-green-600">
+                        {rental.discountPercent}%
+                        {rental.maxDiscount && (
+                          <span className="text-xs block text-gray-500">
+                            Max: {formatCurrency(rental.maxDiscount)}
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      'N/A'
+                    )}
                   </TableCell>
-                  <TableCell className="font-medium">{formatCurrency(booking.totalAmount)}</TableCell>
-                  <TableCell>{getStatusBadge(booking.status)}</TableCell>
+                  <TableCell>{getStatusBadge(rental.status)}</TableCell>
                   <TableCell className="text-right">
-                    <Link to={`/equipment-rentals/${booking.id}`}>
+                    <Link to={`/equipment-rentals/${rental.id}`}>
                       <Button variant="ghost" size="sm">
                         <Eye className="h-4 w-4" />
                       </Button>

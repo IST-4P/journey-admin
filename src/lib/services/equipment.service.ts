@@ -1,4 +1,5 @@
 import axiosInstance from "../axios";
+import { RentalListResponse } from "../types/rental.types";
 
 /**
  * Equipment/Device Service
@@ -164,4 +165,58 @@ export const updateCombo = async (id: string, data: any): Promise<any> => {
  */
 export const deleteCombo = async (id: string): Promise<void> => {
   await axiosInstance.delete(`/combo/${id}`);
+};
+
+// ==================== RENTAL ENDPOINTS ====================
+
+/**
+ * Get list of rentals (equipment/device rentals) with pagination and filters
+ */
+export const getManyRentals = async (params?: {
+  page?: number;
+  limit?: number;
+  status?: string;
+  sortBy?: string;
+  order?: 'ASC' | 'DESC';
+}): Promise<RentalListResponse> => {
+  return await axiosInstance.get("/rental", { params });
+};
+
+/**
+ * Get a single rental by ID (includes extension info)
+ */
+export const getRental = async (id: string): Promise<any> => {
+  return await axiosInstance.get(`/rental/${id}`);
+};
+
+/**
+ * Update rental information
+ */
+export const updateRental = async (id: string, data: {
+  status?: string;
+  startDate?: string;
+  endDate?: string;
+}): Promise<any> => {
+  return await axiosInstance.put(`/rental/${id}`, data);
+};
+
+/**
+ * Get rental extensions by rental ID
+ */
+export const getRentalExtensions = async (rentalId: string): Promise<any> => {
+  return await axiosInstance.get(`/rental-extension/${rentalId}`);
+};
+
+/**
+ * Approve rental extension
+ */
+export const approveRentalExtension = async (extensionId: string): Promise<any> => {
+  return await axiosInstance.put(`/rental-extension/approve/${extensionId}`);
+};
+
+/**
+ * Reject rental extension
+ */
+export const rejectRentalExtension = async (extensionId: string, reason?: string): Promise<any> => {
+  return await axiosInstance.put(`/rental-extension/reject/${extensionId}`, { reason });
 };
