@@ -6,6 +6,7 @@ import type {
   GetExtensionListParams,
   GetExtensionListResponse,
   CheckInOutPair,
+  CheckInOut,
 } from "../types/booking.types";
 
 const BASE_URL = "/booking";
@@ -99,9 +100,11 @@ export async function getCheckInOutsByBookingId(
 /**
  * Verify a check-in/out record
  */
-export async function verifyCheckInOut(checkInOutId: string) {
-  const response: any = await axios.post(`/check/verify/${checkInOutId}`);
-  return response;
+export async function verifyCheckInOut(
+  checkInOutId: string
+): Promise<CheckInOut> {
+  const response: any = await axios.put(`/check/verify/${checkInOutId}`);
+  return response as any;
 }
 
 /**

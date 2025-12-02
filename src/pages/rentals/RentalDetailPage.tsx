@@ -181,13 +181,23 @@ export function RentalDetailPage() {
     }
   };
 
-  const handleVerifyCheckInOut = async (checkInOutId: string) => {
+  const handleVerifyCheckInOut = async (checkInOutId: string, type?: string) => {
     try {
       await bookingService.verifyCheckInOut(checkInOutId);
-      toast.success("Đã xác nhận check-in/out");
+      const message = type === "CHECK_OUT" 
+        ? "Đã xác nhận trả xe thành công" 
+        : type === "CHECK_IN"
+        ? "Đã xác nhận nhận xe thành công"
+        : "Đã xác nhận check-in/out";
+      toast.success(message);
       loadBookingData();
     } catch (error) {
-      toast.error("Không thể xác nhận check-in/out");
+      const errorMessage = type === "CHECK_OUT"
+        ? "Không thể xác nhận trả xe"
+        : type === "CHECK_IN"
+        ? "Không thể xác nhận nhận xe"
+        : "Không thể xác nhận check-in/out";
+      toast.error(errorMessage);
     }
   };
 
@@ -534,9 +544,7 @@ export function RentalDetailPage() {
                                   : "bg-blue-100 text-blue-800"
                               }
                             >
-                              {checkIn.type === "CHECK_IN"
-                                ? "Nhận Xe"
-                                : "Trả Xe"}
+                              {checkIn.type === "CHECK_IN" ? "Nhận Xe" : "Trả Xe"}
                             </Badge>
                             {checkIn.verified && (
                               <Badge className="bg-green-100 text-green-800">
@@ -545,9 +553,16 @@ export function RentalDetailPage() {
                               </Badge>
                             )}
                           </div>
-                          <p className="text-sm text-gray-600">
-                            {formatDateTime(checkIn.createdAt)}
-                          </p>
+                          <div className="text-right">
+                            <p className="text-sm text-gray-600">
+                              Tạo: {formatDateTime(checkIn.createdAt)}
+                            </p>
+                            {checkIn.verified && checkIn.verifiedAt && (
+                              <p className="text-xs text-green-600">
+                                Xác nhận: {formatDateTime(checkIn.verifiedAt)}
+                              </p>
+                            )}
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4 mb-3">
@@ -629,16 +644,30 @@ export function RentalDetailPage() {
                           </div>
                         )}
 
-                        {!checkIn.verified && (
+                        {!checkIn.verified ? (
                           <Button
                             size="sm"
-                            className="w-full bg-blue-600 hover:bg-blue-700"
-                            onClick={() => handleVerifyCheckInOut(checkIn.id)}
+                            className={`w-full ${
+                              checkIn.type === "CHECK_OUT"
+                                ? "bg-green-600 hover:bg-green-700"
+                                : "bg-blue-600 hover:bg-blue-700"
+                            }`}
+                            onClick={() => handleVerifyCheckInOut(checkIn.id, checkIn.type)}
                           >
                             <CheckCircle className="h-4 w-4 mr-2" />
                             Xác Nhận{" "}
                             {checkIn.type === "CHECK_IN" ? "Nhận Xe" : "Trả Xe"}
                           </Button>
+                        ) : (
+                          <div className="w-full p-2 bg-green-50 border border-green-200 rounded-lg text-center">
+                            <p className="text-sm text-green-700 font-medium">
+                              <CheckCircle className="inline h-4 w-4 mr-1" />
+                              Đã xác nhận lúc:{" "}
+                              {checkIn.verifiedAt
+                                ? formatDateTime(checkIn.verifiedAt)
+                                : "N/A"}
+                            </p>
+                          </div>
                         )}
                       </div>
                     ))
@@ -919,3 +948,7 @@ export function RentalDetailPage() {
     </div>
   );
 }
+
+
+
+
